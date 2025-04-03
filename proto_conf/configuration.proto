@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+import "configuration_options.proto";
+
+option (options.version) = 1;
+
+message ImageAcquisition {
+    int32 image_width = 1 [(options.validation) = RANGE,
+                           (options.min) = { val_int: 256 },
+                           (options.max) = { val_int: 2048 },
+                           (options.default_value) = { val_int: 256 },
+                           (options.comment) = "The width of the processed image"];
+    
+    int32 image_height = 2 [(options.validation) = RANGE,
+                            (options.min) = { val_int: 256 },
+                            (options.max) = { val_int: 2048 },
+                            (options.default_value) = { val_int: 256 },
+                            (options.comment) = "The height of the processed image"];
+
+    float exposure = 6 [(options.validation) = RANGE,
+                        (options.min) = { val_float: 0.1 },
+                        (options.max) = { val_float: 12.0 },
+                        (options.default_value) = { val_float: 1.0 },
+                        (options.comment) = "Exposure"];
+}
+
+message Device {
+    string device_name = 1 [(options.default_value) = { val_str: "device" }];
+
+    string serial_number = 2 [(options.default_value) = { val_str: "012345" },
+                              (options.comment) = "Serial Number of the device"];
+}
+
+message Configuration {
+    ImageAcquisition image_acquisition = 1;
+    Device device = 2;
+}

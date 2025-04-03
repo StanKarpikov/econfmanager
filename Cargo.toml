@@ -1,0 +1,16 @@
+[package]
+name = "econfmanager"
+description = "Configuration Manager for Embedded Systems"
+version = "0.1.0"
+edition = "2024"
+authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
+
+[dependencies]
+log = "0.4.27"
+prost = "0.13.5"
+prost-reflect = "0.14.7"
+rusqlite = "0.34.0"
+
+[[bin]]
+name = "econfmanager"
+path = "src/econfmanager.rs"

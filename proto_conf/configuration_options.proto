@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package options;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FileOptions {
+    int32 version = 60001;
+}
+
+enum ValidationMethod {
+    NONE = 0;            // Default: no validation
+    RANGE = 1;           // Validate using min/max
+    ALLOWED_VALUES = 2;  // Validate using a list of allowed values
+    CUSTOM_CALLBACK = 3; // Validate using a callback function
+}
+
+message AnyValue {
+    oneof value_type {
+        int32 val_int = 1;
+        float val_float = 2;
+        string val_str = 3;
+    }
+}
+
+extend google.protobuf.FieldOptions {
+    ValidationMethod validation = 50001;
+    AnyValue min = 50002;
+    AnyValue max = 50003;
+    repeated AnyValue allowed_values = 50004;
+    string custom_callback = 50005;
+    string comment = 50006;
+    AnyValue default_value = 50007;
+    bool is_const = 50008;
+    repeated string tags = 50009;
+}
