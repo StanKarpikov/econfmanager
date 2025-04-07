@@ -1,10 +1,13 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::Path;
 use std::process::Command;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR")?);
-    let descriptor_path = out_dir.join("descriptors.bin");
-    
+    let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let proto_path = Path::new(&project_root).join("proto");
+    let descriptor_path = proto_path.join("descriptors.bin");
+    fs::create_dir_all(proto_path)?;
+
     // Run protoc to generate the descriptor set
     let status = Command::new("protoc")
         .arg("--include_imports")

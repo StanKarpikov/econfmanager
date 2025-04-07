@@ -32,7 +32,7 @@ fn set_sqlite_version(conn: &Connection, version: u32) -> Result<(), Box<dyn Err
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let descriptor_path = std::path::Path::new("descriptors.bin");
+    let descriptor_path = std::path::Path::new("proto").join("descriptors.bin");
     let descriptor_bytes = std::fs::read(descriptor_path)?;
     let pool = DescriptorPool::decode(&*descriptor_bytes)?;
 
@@ -42,22 +42,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let file_descriptor = pool.get_file_by_name("configuration.proto")
     .ok_or("configuration.proto file descriptor not found")?;
 
-    let options = file_descriptor.options();
-
-    // The field number for your extension is 60001
-    let version;
-    if let Some(value) = options.get_field_by_number(60001) {
-        version = match &*value {
-            Value::I32(v) => *v as u32,
-            Value::I64(v) => *v as u32,
-            Value::U32(v) => *v as u32,
-            Value::U64(v) => *v as u32,
-            _ => return Err("Version option is not an integer".into()),
-        };
-        println!("Version: {}", version);
-    } else {
-        return Err("Version option not found".into());
-    }
+    let version = file_descriptor.options()
+        .extensions()
+        .find(|(ext, _)| ext.name() == "version")
+        .and_then(|(_, value)| match &*value {
+            Value::I32(v) => Some(*v as u32),
+            Value::I64(v) => Some(*v as u32),
+            Value::U32(v) => Some(*v),
+            Value::U64(v) => Some(*v as u32),
+            _ => None,
+        })
+        .ok_or("Version option not found or is not a valid integer type")?;
 
     let default_config = DynamicMessage::new(config_descriptor.clone());
     
