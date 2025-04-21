@@ -1,6 +1,10 @@
+use clap::Parser;
 use prost_reflect::{DescriptorPool, DynamicMessage, ReflectMessage, Value};
 use rusqlite::{Connection, Transaction};
 use std::{error::Error, time::{SystemTime, UNIX_EPOCH}};
+
+pub mod configfile;
+use configfile::{arguments::Args, Config, parse_config_file};
 
 /// Returns current timestamp with seconds and milliseconds as a floating-point number
 /// (e.g. 1712345678.456 for 456 milliseconds past the second)
@@ -23,7 +27,7 @@ fn configure_sqlite(db: &Connection) -> Result<(), Box<dyn Error>> {
     db.pragma_update(None, "wal_autocheckpoint", "1000")?;  // Pages
     db.pragma_update(None, "synchronous", "NORMAL")?;
     db.pragma_update(None, "busy_timeout", "10000")?;  // 10 second timeout
-    Ok(())
+    Ok(())  
 }
 
 fn set_sqlite_version(conn: &Connection, version: u32) -> Result<(), Box<dyn Error>> {
@@ -32,14 +36,18 @@ fn set_sqlite_version(conn: &Connection, version: u32) -> Result<(), Box<dyn Err
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let descriptor_path = std::path::Path::new("proto").join("descriptors.bin");
+    let args = Args::parse();
+    let config: Config = parse_config_file(args);
+
+    let descriptor_path = std::path::Path::new(&config.descriptors_path);
+
     let descriptor_bytes = std::fs::read(descriptor_path)?;
     let pool = DescriptorPool::decode(&*descriptor_bytes)?;
 
     let config_descriptor = pool.get_message_by_name("Configuration")
         .ok_or("Configuration message not found in descriptor pool")?;
     
-    let file_descriptor = pool.get_file_by_name("configuration.proto")
+    let file_descriptor = pool.get_file_by_name(&config.proto_name)
     .ok_or("configuration.proto file descriptor not found")?;
 
     let version = file_descriptor.options()
@@ -56,7 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let default_config = DynamicMessage::new(config_descriptor.clone());
     
-    let mut conn = Connection::open("configuration.db")?;
+    let mut conn = Connection::open(std::path::Path::new(&config.database_path))?;
 
     set_sqlite_version(&conn, version)?;
     // let user_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
