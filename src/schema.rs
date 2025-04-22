@@ -41,11 +41,11 @@ pub enum ValidationMethod {
 #[repr(C)]
 pub struct Parameter {
     pub value: AnyValue,
-    pub name_id: String,
+    pub name_id: &'static str,
     pub validation: ValidationMethod,
-    pub comment: String,
+    pub comment: &'static str,
     pub is_const: bool,
-    pub tags: Vec<String>
+    pub tags: Vec<&'static str>
 }
 
 impl SchemaManager {
@@ -73,10 +73,12 @@ impl SchemaManager {
      * PUBLIC FUNCTIONS
      ******************************************************************************/
     
-    pub(crate) fn new(descriptors_path: String, proto_name: String) -> Result<Self, Box<dyn std::error::Error>> {
-        let descriptor_path = std::path::Path::new(&descriptors_path);
-
-        let descriptor_bytes = std::fs::read(descriptor_path)?;
+    pub(crate) fn new(descriptors_path: String, descriptor_bytes: Vec<u8>, proto_name: String) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut descriptor_bytes = descriptor_bytes;
+        if descriptors_path.len() != 0 {
+            let descriptor_path = std::path::Path::new(&descriptors_path);
+            descriptor_bytes = std::fs::read(descriptor_path)?;
+        }
         let pool = DescriptorPool::decode(&*descriptor_bytes)?;
     
         let config_descriptor = pool.get_message_by_name("Configuration")
@@ -122,9 +124,10 @@ impl SchemaManager {
                                 prost_reflect::Kind::Enum(enum_descriptor) => AnyValue::ValI32(0),
                                 _ => AnyValue::ValI32(0), //todo!()
                             },
-                            name_id: format!("{}@{}", field.name().to_string(), pm_field.name().to_string()), 
+                            // NOTE: Leak is okay since this function is only called at build time
+                            name_id: Box::leak(Box::new(format!("{}@{}", field.name().to_string(), pm_field.name().to_string()))), 
                             validation: ValidationMethod::None, 
-                            comment: "".to_owned(), 
+                            comment: "", 
                             is_const: false,
                             tags: Vec::new() 
                         };

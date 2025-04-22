@@ -1,16 +1,22 @@
+use std::fs::File;
 use std::{env, fs};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::io::Write;
 
 #[path = "src/schema.rs"] pub mod schema;
-use schema::{Parameter, SchemaManager};
+use schema::{AnyValue, Parameter, SchemaManager, ValidationMethod};
 // #[path = "src/configfile.rs"] pub mod config;
 // use config::Config;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let proto_path = Path::new(&project_root).join("proto");
+    let path = env::var("OUT_DIR").expect("no variable called OUT_DIR");
+    let out_dir = PathBuf::from(path);
+    // let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let proto_path = Path::new(&out_dir);
     let descriptor_path = proto_path.join("descriptors.bin");
+    let configuration_proto = "configuration.proto";
+    println!("cargo:rustc-env=CONFIGURATION_PROTO_FILE={configuration_proto}");
     fs::create_dir_all(proto_path)?;
 
     // Run protoc to generate the descriptor set
@@ -30,7 +36,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=configuration.proto");
     println!("cargo:rerun-if-changed=configuration_options.proto");
 
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let build_dir = out_dir
         .ancestors()
         .nth(3) // OUT_DIR is like target/debug/build/crate-hash/out
@@ -39,8 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let config = Config::new(descriptor_path.to_str().unwrap().to_owned(),
     //                                  protofile_path.to_str().unwrap().to_owned(), 
     //                                  "".to_owned())?;
-    let schema = SchemaManager::new(descriptor_path.to_str().unwrap().to_owned(), "configuration.proto".to_owned())?;
-    generate_parameter_enum(schema.get_parameters()?, build_dir.to_str().unwrap().to_owned());
+    let schema = SchemaManager::new(descriptor_path.to_str().unwrap().to_owned(), Vec::new(), "configuration.proto".to_owned())?;
+    generate_parameter_enum(schema.get_parameters()?, build_dir.to_str().unwrap().to_owned())?;
 
     let header_path = build_dir.join("econfmanager.h");
     let status = Command::new("cbindgen")
@@ -77,27 +82,89 @@ fn get_parameter_name_for_enum(name_id: &String) -> String {
             .join("_")
 }
 
-fn generate_parameter_enum(parameters: Vec<Parameter>, build_dir: String) {
+fn format_anyvalue(v: &AnyValue) -> String {
+    match v {
+        AnyValue::ValBool(b)   => format!("AnyValue::ValBool({})", b),
+        AnyValue::ValI32(i)    => format!("AnyValue::ValI32({})", i),
+        AnyValue::ValString(s) => format!("AnyValue::ValString(String::from({:?}))", s),
+        AnyValue::ValU32(_) => format!("AnyValue::ValI32(0)"),
+        AnyValue::ValI64(_) => format!("AnyValue::ValI32(0)"),
+        AnyValue::ValU64(_) => format!("AnyValue::ValI32(0)"),
+        AnyValue::ValF32(_) => format!("AnyValue::ValI32(0)"),
+        AnyValue::ValF64(_) => format!("AnyValue::ValI32(0)"),
+        AnyValue::ValBlob(items) => format!("AnyValue::ValI32(0)"),
+    }
+}
 
-    let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("    {},", get_parameter_name_for_enum(&parameter.name_id))).collect();
+fn generate_parameter_enum(parameters: Vec<Parameter>, build_dir: String)  -> Result<(), Box<dyn std::error::Error>> {
+
+    let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("    {},", get_parameter_name_for_enum(&parameter.name_id.to_string()))).collect();
     let array_entries: Vec<String> = parameters.iter().map(|parameter| format!("    \"{}\",", parameter.name_id)).collect();
 
-    let output = format!(
-        r#"
-#[repr(C)]
-pub enum Parameters {{
-{enum_variants}
-}}
-
-#[repr(C)]
-pub const PARAMETER_ID: &[&str] = &[
-{array_entries}
-];
-"#,
-        enum_variants = enum_variants.join("\n"),
-        array_entries = array_entries.join("\n"),
-    );
-
     let dest_path = Path::new(&build_dir).join("generated.rs");
-    fs::write(dest_path, output).unwrap();
+    let mut f = File::create(dest_path)?;
+    
+    writeln!(f, "use super::*;")?;
+    writeln!(f, "/// Auto‐generated. See build.rs")?;
+
+    writeln!(f, "#[repr(C)]")?;
+    writeln!(f, "#[allow(non_camel_case_types)]")?;
+    writeln!(f, "pub enum Parameters {{")?;
+    writeln!(f, "{}", enum_variants.join("\n"))?;
+    writeln!(f, "}}")?;
+    // writeln!(f, "pub const PARAMETER_ID: &[&str] = &[")?;
+    // writeln!(f, "{}", array_entries.join("\n"))?;
+    // writeln!(f, "];")?;
+
+    writeln!(f, "pub const PARAMETER_DATA: &'static [Parameter] = &[")?;
+
+    for p in parameters {
+        // For each field we serialize into Rust syntax:
+        let value_code = match p.value {
+            AnyValue::ValBool(b)   => format!("AnyValue::ValBool({})", b),
+            AnyValue::ValI32(i)    => format!("AnyValue::ValI32({})", i),
+            AnyValue::ValString(s) => format!("AnyValue::ValString(String::from({:?}))", s),
+            AnyValue::ValU32(_) => format!("AnyValue::ValI32(0)"),
+            AnyValue::ValI64(_) => format!("AnyValue::ValI32(0)"),
+            AnyValue::ValU64(_) => format!("AnyValue::ValI32(0)"),
+            AnyValue::ValF32(_) => format!("AnyValue::ValI32(0)"),
+            AnyValue::ValF64(_) => format!("AnyValue::ValI32(0)"),
+            AnyValue::ValBlob(items) => format!("AnyValue::ValI32(0)"),
+        };
+        let validation_code = match p.validation {
+            ValidationMethod::None => "ValidationMethod::None".to_string(),
+            ValidationMethod::Range { min, max } => format!(
+                        "ValidationMethod::Range {{ min: {}, max: {} }}",
+                        format_anyvalue(&min),
+                        format_anyvalue(&max),
+                    ),
+            ValidationMethod::AllowedValues { values } => {
+                        let vals = values.iter()
+                            .map(|v| format_anyvalue(v))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("ValidationMethod::AllowedValues {{ values: vec![{}] }}", vals)
+                    }
+            ValidationMethod::CustomCallback => todo!(),
+        };
+        let tags_code = p.tags
+            .iter()
+            .map(|t| format!("{:?}", t))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        writeln!(f, "        Parameter {{")?;
+        writeln!(f, "            value: {},",     value_code)?;
+        writeln!(f, "            name_id: {:?},", p.name_id)?;
+        writeln!(f, "            validation: {},", validation_code)?;
+        writeln!(f, "            comment: {:?},", p.comment)?;
+        writeln!(f, "            is_const: {},", p.is_const)?;
+        writeln!(f, "            tags: vec![{}],", tags_code)?;
+        writeln!(f, "        }},")?;
+    }
+
+    writeln!(f, "];")?;
+
+    // fs::write(dest_path, output).unwrap();
+    Ok(())
 }

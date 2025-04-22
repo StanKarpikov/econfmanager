@@ -7,8 +7,8 @@ use schema::{AnyValue, Parameter, SchemaManager, ValidationMethod};
 use configfile::Config;
 use database_utils::DatabaseManager;
 
-#[path = "../target/debug/generated.rs"]  pub mod generated;
-use generated::{Parameters, PARAMETER_ID};
+#[path = "../target/debug/generated.rs"] pub mod generated;
+use generated::{Parameters, PARAMETER_DATA};
 
 #[repr(C)]
 pub enum Status {
@@ -21,12 +21,11 @@ pub enum Status {
  ******************************************************************************/
 
 fn init_internal(
-    descriptors_path: String,
-    proto_name: String,
     database_path: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let config = Config::new(descriptors_path, proto_name, database_path)?;
-    let schema = SchemaManager::new(config.descriptors_path.clone(), config.proto_name.clone())?;
+    let descriptors_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/descriptors.bin"));
+    let config = Config::new(env!("CONFIGURATION_PROTO_FILE").to_string(), database_path)?;
+    let schema = SchemaManager::new("".to_owned(), descriptors_bytes.to_vec(), config.proto_name.clone())?;
     let database = DatabaseManager::new(config)?;
 
     // schema.prepare_database(database)?;
@@ -41,35 +40,24 @@ fn init_internal(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init(
-        descriptors_path: *const std::os::raw::c_char,
-        proto_name: *const std::os::raw::c_char,
         database_path: *const std::os::raw::c_char
     ) -> Status {
-    let descriptors_path = unsafe { std::ffi::CStr::from_ptr(descriptors_path).to_string_lossy().into_owned() };
-    let proto_name = unsafe { std::ffi::CStr::from_ptr(proto_name).to_string_lossy().into_owned() };
     let database_path = unsafe { std::ffi::CStr::from_ptr(database_path).to_string_lossy().into_owned() };
 
-    match init_internal(descriptors_path, proto_name, database_path) {
+    match init_internal(database_path) {
         Ok(_) => Status::StatusOk,
         Err(_) => Status::StatusError,
     }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn get(id: Parameters) -> Parameter {
+pub extern "C" fn get(id: Parameters) -> &'static Parameter {
     let _ = id;
-    let parameter = Parameter{ 
-        value: AnyValue::ValI32(0),
-        name_id: "".to_owned(), 
-        validation: ValidationMethod::None, 
-        comment: "".to_owned(), 
-        is_const: false,
-        tags: Vec::new() 
-    };
+    let parameter = &PARAMETER_DATA[4];
     parameter
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn get_name(id: Parameters) -> String {
-    PARAMETER_ID[3].to_owned()
+pub extern "C" fn get_name(id: Parameters) -> &'static str {
+    &PARAMETER_DATA[3].name_id
 }

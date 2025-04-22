@@ -7,8 +7,6 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
 pub(crate) struct Config {
-    #[serde(default = "default_descriptors_path")]
-    pub descriptors_path: String,
     #[serde(default = "default_proto_name")]
     pub proto_name: String,
     #[serde(default = "default_database_path")]
@@ -18,10 +16,6 @@ pub(crate) struct Config {
 /******************************************************************************
  * PRIVATE FUNCTIONS
  ******************************************************************************/
-
-fn default_descriptors_path() -> String {
-    "descriptors.bin".to_string()
-}
 
 fn default_proto_name() -> String {
     "configuration.proto".to_string()
@@ -36,8 +30,8 @@ fn default_database_path() -> String {
  ******************************************************************************/
 
 impl Config {
-    pub(crate) fn new(descriptors_path: String, proto_name: String, database_path: String) -> Result<Config, Box<dyn std::error::Error>> {
-        Ok(Config{descriptors_path, proto_name, database_path})
+    pub(crate) fn new(proto_name: String, database_path: String) -> Result<Config, Box<dyn std::error::Error>> {
+        Ok(Config{proto_name, database_path})
     }
 
     pub(crate) fn from_file(config_file:String) -> Config {
