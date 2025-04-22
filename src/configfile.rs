@@ -1,9 +1,11 @@
-
 use std::fs;
 use serde::Deserialize;
 
-#[path = "arguments.rs"] pub mod arguments;
-use arguments::Args;
+use crate::arguments::Args;
+
+/******************************************************************************
+ * PUBLIC TYPES
+ ******************************************************************************/
 
 #[derive(Deserialize, Default)]
 pub(crate) struct Config {
@@ -14,6 +16,10 @@ pub(crate) struct Config {
     #[serde(default = "default_database_path")]
     pub database_path: String,
 }
+
+/******************************************************************************
+ * PRIVATE FUNCTIONS
+ ******************************************************************************/
 
 fn default_descriptors_path() -> String {
     "descriptors.bin".to_string()
@@ -26,6 +32,10 @@ fn default_proto_name() -> String {
 fn default_database_path() -> String {
     "configuration.db".to_string()
 }
+
+/******************************************************************************
+ * PUBLIC FUNCTIONS
+ ******************************************************************************/
 
 pub(crate) fn parse_config_file(args: Args) -> Config {
     let file_content = fs::read_to_string(std::path::Path::new(&args.config)).expect("Failed to read the file");
