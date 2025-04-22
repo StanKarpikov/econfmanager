@@ -1,12 +1,51 @@
 use std::error::Error;
-use prost_reflect::{DescriptorPool, DynamicMessage, FileDescriptor, MessageDescriptor, Value};
+use prost_reflect::prost_types::Type;
+use prost_reflect::{DescriptorPool, DynamicMessage, FileDescriptor, MessageDescriptor, ReflectMessage, Value};
 
-use crate::configfile::Config;
-use crate::database_utils::DatabaseManager;
+
+// use crate::configfile::Config;
+// use crate::database_utils::DatabaseManager;
+
 
 pub(crate) struct SchemaManager {
     config_descriptor: MessageDescriptor,
     file_descriptor: FileDescriptor,
+}
+
+#[repr(C)]
+pub enum AnyValue {
+    ValBool(bool),
+    ValI32(i32),
+    ValU32(u32),
+    ValI64(i64),
+    ValU64(u64),
+    ValF32(f32),
+    ValF64(f64),
+    ValString(String),
+    ValBlob(Vec<u8>),
+}
+
+#[repr(C)]
+pub enum ValidationMethod {
+    None,           // Default: no validation
+    Range {
+        min: AnyValue,
+        max: AnyValue,
+    },
+    AllowedValues {
+        values: Vec<AnyValue>
+    },
+    CustomCallback, // Validate using a callback function
+}
+
+#[repr(C)]
+pub struct Parameter {
+    pub value: AnyValue,
+    pub name_id: String,
+    pub validation: ValidationMethod,
+    pub comment: String,
+    pub is_const: bool,
+    pub tags: Vec<String>
 }
 
 impl SchemaManager {
@@ -34,8 +73,8 @@ impl SchemaManager {
      * PUBLIC FUNCTIONS
      ******************************************************************************/
     
-    pub(crate) fn new(config: &Config) -> Result<Self, Box<dyn std::error::Error>> {
-        let descriptor_path = std::path::Path::new(&config.descriptors_path);
+    pub(crate) fn new(descriptors_path: String, proto_name: String) -> Result<Self, Box<dyn std::error::Error>> {
+        let descriptor_path = std::path::Path::new(&descriptors_path);
 
         let descriptor_bytes = std::fs::read(descriptor_path)?;
         let pool = DescriptorPool::decode(&*descriptor_bytes)?;
@@ -43,24 +82,81 @@ impl SchemaManager {
         let config_descriptor = pool.get_message_by_name("Configuration")
             .ok_or("Configuration message not found in descriptor pool")?;
         
-        let file_descriptor = pool.get_file_by_name(&config.proto_name)
+        let file_descriptor = pool.get_file_by_name(&proto_name)
         .ok_or("configuration.proto file descriptor not found")?;
 
         Ok(Self { config_descriptor, file_descriptor })
     }
 
-    pub(crate) fn prepare_database(&self, mut db: DatabaseManager) -> Result<(), Box<dyn Error>> {
-        let default_config = DynamicMessage::new(self.config_descriptor.clone());
-
-        db.set_sqlite_version(self.get_required_version()?)?;
+    // pub(crate) fn prepare_database(&self, mut db: DatabaseManager) -> Result<(), Box<dyn Error>> {
+    //     db.set_sqlite_version(self.get_required_version()?)?;
     
-        // Recursively insert all fields
-        db.process_config(
-            &default_config,
-            ""
-        )?;
+    //     let parameters = self.get_parameters()?;
+
+    //     db.insert_parameters(parameters)?;
         
-        Ok(())
+    //     Ok(())
+    // }
+
+    pub(crate) fn get_parameters(&self) -> Result<Vec<Parameter>, Box<dyn Error>> {
+        let default_config = DynamicMessage::new(self.config_descriptor.clone());
+        let mut parameters = Vec::new();
+        for field in default_config.descriptor().fields() {
+            let value = &*default_config.get_field(&field);
+            match value {
+                Value::Message(nested_msg) => {
+                    for pm_field in nested_msg.descriptor().fields() {
+                        let field_type = pm_field.kind();
+                        let parameter = Parameter{ 
+                            value: match field_type {
+                                prost_reflect::Kind::Double => AnyValue::ValF64(0.0),
+                                prost_reflect::Kind::Float => AnyValue::ValF32(0.0),
+                                prost_reflect::Kind::Int32 => AnyValue::ValI32(0),
+                                prost_reflect::Kind::Int64 => AnyValue::ValI32(0),
+                                prost_reflect::Kind::Uint32 => AnyValue::ValI32(0),
+                                prost_reflect::Kind::Uint64 => AnyValue::ValI32(0), 
+                                prost_reflect::Kind::Bool => AnyValue::ValI32(0),
+                                prost_reflect::Kind::String => AnyValue::ValI32(0),
+                                prost_reflect::Kind::Bytes => AnyValue::ValI32(0),
+                                // prost_reflect::Kind::Message(message_descriptor) => todo!(),
+                                prost_reflect::Kind::Enum(enum_descriptor) => AnyValue::ValI32(0),
+                                _ => AnyValue::ValI32(0), //todo!()
+                            },
+                            name_id: format!("{}@{}", field.name().to_string(), pm_field.name().to_string()), 
+                            validation: ValidationMethod::None, 
+                            comment: "".to_owned(), 
+                            is_const: false,
+                            tags: Vec::new() 
+                        };
+                        
+                        // if let Some(opts) = field.proto().options.as_ref() {
+                        //     if opts.has_extension(options::default_value) {
+                        //         // TODO: Check the type
+                        //         parameter.value = opts.get_extension(options::default_value);
+                        //     }
+                        //     if opts.has_extension(options::comment) {
+                        //         parameter.comment = opts.get_extension(options::comment);
+                        //     }
+                        //     if opts.has_extension(options::is_const) {
+                        //         parameter.is_const = opts.get_extension(options::is_const);
+                        //     }
+                        //     if opts.has_extension(options::tags) {
+                        //         parameter.tags = opts.get_extension(options::tags);
+                        //     }
+                        //     if opts.has_extension(options::validation) {
+                        //         parameter.validation = opts.get_extension(options::validation);
+                        //     }
+                        // }
+                        
+                        parameters.push(parameter);
+                    }
+                }
+                _ => {
+                    return Err(format!("Field {} will be ignored, the configuration requires two levels of definitions", field.name().to_string()).into());
+                }
+            }
+        }
+        Ok(parameters)
     }
 
 }

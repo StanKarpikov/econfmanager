@@ -122,28 +122,20 @@ impl DatabaseManager {
         let timestamp = Self::get_timestamp();
         let tx = self.conn.transaction()?;
         {
-            let _stmt = tx.prepare("INSERT OR REPLACE INTO configuration (key, value, timestamp) VALUES (?1, ?2, ?3)")?;
-    
             for field in message.descriptor().fields() {
                 let field_name = field.name();
-                let full_key = if prefix.is_empty() {
-                    field_name.to_string()
-                } else {
-                    format!("{}@{}", prefix, field_name)
-                };
-                
                 let value = &*message.get_field(&field);
                 match value {
                     Value::Message(nested_msg) => {
                         Self::insert_fields(
                             &tx,
                             &nested_msg,
-                            &full_key,
+                            &field_name.to_string(),
                             timestamp,
                         )?;
                     }
                     _ => {
-                        return Err(format!("Field {} will be ignored, the configuration requires two levels of definitions", full_key).into());
+                        // return Err(format!("Field {} will be ignored, the configuration requires two levels of definitions", full_key).into());
                     }
                 }
             }
@@ -151,4 +143,18 @@ impl DatabaseManager {
         tx.commit()?;
         Ok(())
     }
+
+    // pub(crate) fn insert_parameters(parameters: Vec<Parameter>) -> Result<(), Box<dyn std::error::Error>> {
+    //     let timestamp = Self::get_timestamp();
+    //     let tx = self.conn.transaction()?;
+    //     {
+    //         let stmt = tx.prepare("INSERT OR REPLACE INTO configuration (key, value, timestamp) VALUES (?1, ?2, ?3)")?;
+    //         for parameter in parameters {
+    //             stmt.execute((&full_key, sql_value, timestamp))?;
+    //         }
+    //     }
+    //     tx.commit()?;
+    //     Ok(())
+    // }
+
 }

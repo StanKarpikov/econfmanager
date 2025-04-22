@@ -1,8 +1,6 @@
 use std::fs;
 use serde::Deserialize;
 
-use crate::arguments::Args;
-
 /******************************************************************************
  * PUBLIC TYPES
  ******************************************************************************/
@@ -37,8 +35,14 @@ fn default_database_path() -> String {
  * PUBLIC FUNCTIONS
  ******************************************************************************/
 
-pub(crate) fn parse_config_file(args: Args) -> Config {
-    let file_content = fs::read_to_string(std::path::Path::new(&args.config)).expect("Failed to read the file");
-    let config: Config = serde_json::from_str(&file_content).expect("Failed to parse JSON");
-    config
+impl Config {
+    pub(crate) fn new(descriptors_path: String, proto_name: String, database_path: String) -> Result<Config, Box<dyn std::error::Error>> {
+        Ok(Config{descriptors_path, proto_name, database_path})
+    }
+
+    pub(crate) fn from_file(config_file:String) -> Config {
+        let file_content = fs::read_to_string(std::path::Path::new(&config_file)).expect("Failed to read the file");
+        let config: Config = serde_json::from_str(&file_content).expect("Failed to parse JSON");
+        config
+    }
 }
