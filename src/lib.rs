@@ -2,6 +2,7 @@ pub mod schema;
 pub mod notifier;
 pub mod arguments;
 pub mod interface;
+pub mod constants;
 pub mod configfile;
 pub mod database_utils;
 pub mod event_receiver;

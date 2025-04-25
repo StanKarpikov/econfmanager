@@ -3,12 +3,11 @@ use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use prost::Message;
 use socket2::{Domain, Protocol, Socket, Type};
 
+use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
 use crate::interface::generated::ParameterId;
 
 use crate::services::ParameterNotification;
 
-const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 123);
-const MULTICAST_PORT: u16 = 44321;
 
 pub(crate) struct EventReceiver {
 
