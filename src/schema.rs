@@ -25,6 +25,41 @@ pub enum ParameterValue {
     ValBlob(Vec<u8>),
 }
 
+pub(crate) trait ParameterType: Clone {
+    fn to_parameter_value(self) -> ParameterValue;
+    fn from_parameter_value(value: ParameterValue) -> Option<Self>
+    where
+        Self: Sized;
+}
+
+macro_rules! impl_parameter_type {
+    ($type:ty, $variant:ident) => {
+        impl ParameterType for $type {
+            fn to_parameter_value(self) -> ParameterValue {
+                ParameterValue::$variant(self)
+            }
+            
+            fn from_parameter_value(value: ParameterValue) -> Option<Self> {
+                match value {
+                    ParameterValue::$variant(v) => Some(v),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+// Implement for all basic types
+impl_parameter_type!(bool, ValBool);
+impl_parameter_type!(i32, ValI32);
+impl_parameter_type!(u32, ValU32);
+impl_parameter_type!(i64, ValI64);
+impl_parameter_type!(u64, ValU64);
+impl_parameter_type!(f32, ValF32);
+impl_parameter_type!(f64, ValF64);
+impl_parameter_type!(String, ValString);
+impl_parameter_type!(Vec<u8>, ValBlob);
+
 #[repr(C)]
 pub enum ValidationMethod {
     None,           // Default: no validation

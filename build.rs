@@ -184,7 +184,9 @@ fn generate_parameter_enum(
         writeln!(f, "    {} = {},", variant, index)?;
     }
     writeln!(f, "    INVALID_PARAMETER")?;
-    writeln!(f, "}}")?;
+    writeln!(f, "}}\n")?;
+
+    writeln!(f, "pub const PARAMETERS_NUM:usize = {};\n", enum_variants.len())?;
 
     writeln!(f, "pub const PARAMETER_DATA: &'static [Parameter] = &[")?;
 
@@ -253,7 +255,7 @@ fn generate_parameter_functions(
 
     writeln!(f, "/// Auto‐generated. See build.rs\n")?;
     
-    writeln!(f, "use crate::{{lib_helper_functions::{{get_i32, set_i32, get_f32, set_f32}}, interface::generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
+    writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, set_parameter}}, interface::generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
     
     for (pm_id, p) in parameters.iter().enumerate() {
         let pm_enum_name = get_parameter_name_for_enum(&p.name_id.to_string());
@@ -271,16 +273,16 @@ fn generate_parameter_functions(
         };
 
         writeln!(f, "#[allow(non_camel_case_types)]")?;
-        writeln!(f, "type {}_t = {}; \n", pm_name, pm_type)?;
+        writeln!(f, "pub type {}_t = {}; \n", pm_name, pm_type)?;
 
         writeln!(f, "#[unsafe(no_mangle)]")?;
-        writeln!(f, "pub extern \"C\" fn get_{}(instance: CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
-        writeln!(f, "    get_{}(instance, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
+        writeln!(f, "pub extern \"C\" fn get_{}(interface: CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
+        writeln!(f, "    get_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
         writeln!(f, "}}\n")?;
 
         writeln!(f, "#[unsafe(no_mangle)]")?;
-        writeln!(f, "pub extern \"C\" fn set_{}(instance: CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
-        writeln!(f, "    set_{}(instance, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
+        writeln!(f, "pub extern \"C\" fn set_{}(interface: CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
+        writeln!(f, "    set_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
         writeln!(f, "}}\n")?;
     }
 

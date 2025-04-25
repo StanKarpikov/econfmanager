@@ -7,11 +7,11 @@ use crate::database_utils::{DatabaseManager, Status};
 use crate::schema::ParameterValue;
 
 #[path = "../target/debug/generated.rs"] pub mod generated;
-use generated::{ParameterId, PARAMETER_DATA};
+use generated::{ParameterId, PARAMETERS_NUM, PARAMETER_DATA};
 
 pub(crate) struct InterfaceInstance {
     database: DatabaseManager,
-    notifier: Notifier
+    notifier: Notifier,
 }
 
 impl InterfaceInstance {
@@ -38,10 +38,11 @@ impl InterfaceInstance {
                 Status::StatusOkChanged(value) | 
                 Status::StatusOkNotChecked(value) |
                 Status::StatusOkOverflowFixed(value) => {
-                    self.notifier.notify_of_parameter_change(id)?; Ok(value)
+                    self.notifier.notify_of_parameter_change(id)?;
+                    Ok(value)
                 }
                 Status::StatusOkNotChanged(value) => Ok(value),
-                Status::StatusErrorNotAccepted(_) => Err("Parameter no accepted".into()),
+                Status::StatusErrorNotAccepted(_) => Err("Parameter not accepted".into()),
                 Status::StatusErrorFailed => Err("Failed to write the parameter".into()),
             },
             Err(_) => Err("Failed to write in the database".into()),
@@ -50,7 +51,8 @@ impl InterfaceInstance {
     
     pub(crate) fn get_name(&self, id: ParameterId) -> String {
         PARAMETER_DATA[id as usize].name_id.to_owned()
-    } 
+    }
+
 }
 
 

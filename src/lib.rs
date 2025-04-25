@@ -48,7 +48,7 @@ impl CInterfaceInstance {
 #[unsafe(no_mangle)]
 pub extern "C" fn econf_init(
         database_path: *const std::os::raw::c_char,
-        instance: *mut CInterfaceInstance
+        interface: *mut CInterfaceInstance
     ) -> EconfStatus {
     let database_path = unsafe { std::ffi::CStr::from_ptr(database_path).to_string_lossy().into_owned() };
 
@@ -59,17 +59,16 @@ pub extern "C" fn econf_init(
 
     let c_instance = CInterfaceInstance::new(r_instance);
 
-    unsafe { *instance = c_instance};
+    unsafe { *interface = c_instance};
 
     EconfStatus::StatusOk
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_get_name(instance: CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
-    let instance = instance.as_ref();
-    let rust_string = instance.get_name(id);
+pub extern "C" fn econf_get_name(interface: CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
+    let interface = interface.as_ref();
+    let rust_string = interface.get_name(id);
 
-    // Create a C-compatible string
     let c_string = match CString::new(rust_string) {
         Ok(s) => s,
         Err(_) => return EconfStatus::StatusError,

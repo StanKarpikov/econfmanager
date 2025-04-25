@@ -4,27 +4,30 @@ use prost::Message;
 use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
-use crate::interface::generated::ParameterId;
+use crate::interface::generated::{ParameterId, PARAMETERS_NUM};
 
 use crate::services::ParameterNotification;
 
 
 pub(crate) struct EventReceiver {
-
+    callbacks: [Option<ParameterUpdateCallback>; PARAMETERS_NUM],
 }
+
+type ParameterUpdateCallback = fn(id: ParameterId);
 
 impl EventReceiver {
 
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let instance = EventReceiver{callbacks: [None; PARAMETERS_NUM]};
         let _ = std::thread::spawn(move || {
-            if let Err(e) = Self::multicast_receiver(MULTICAST_GROUP, MULTICAST_PORT) {
+            if let Err(e) = instance.multicast_receiver(MULTICAST_GROUP, MULTICAST_PORT) {
                 println!("Receiver error: {}", e);
             }
         });
-        Ok(EventReceiver{})
+        Ok(instance)
     }
 
-    pub(crate) fn multicast_receiver(multicast_group: Ipv4Addr, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) fn multicast_receiver(&self, multicast_group: Ipv4Addr, port: u16) -> Result<(), Box<dyn std::error::Error>> {
         let local_addr = Ipv4Addr::new(0, 0, 0, 0);
         
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
@@ -45,6 +48,35 @@ impl EventReceiver {
             let message = std::str::from_utf8(&buf[..num_bytes])
                 .unwrap_or("[non-utf8 data]");
             println!("Received from {}: {}", src, message);
+
+            self.notify_callback(ParameterId::DEVICE_DEVICE_NAME);
+        }
+    }
+
+    pub(crate) fn add_callback(&mut self, id: ParameterId, callback: ParameterUpdateCallback) -> Result<(), Box<dyn std::error::Error>> {
+        let index = id as usize;
+        if index < PARAMETERS_NUM {
+            self.callbacks[index] = Some(callback);
+            Ok(())
+        } else {
+            Err("Incorrect parameter ID".into())
+        }
+    }
+
+    pub(crate) fn delete_callback(&mut self, id: ParameterId) -> Result<(), Box<dyn std::error::Error>> {
+        let index = id as usize;
+        if index < PARAMETERS_NUM {
+            self.callbacks[index] = None;
+            Ok(())
+        } else {
+            Err("Incorrect parameter ID".into())
+        }
+    }
+
+    pub(crate) fn notify_callback(&self, id: ParameterId) {
+        let index = id as usize;
+        if !self.callbacks[index].is_none() {
+            self.callbacks[index].unwrap()(id);
         }
     }
 }
