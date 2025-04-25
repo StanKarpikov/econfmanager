@@ -1,5 +1,4 @@
 use std::error::Error;
-use prost_reflect::prost_types::Type;
 use prost_reflect::{DescriptorPool, DynamicMessage, FileDescriptor, MessageDescriptor, ReflectMessage, Value};
 
 
@@ -13,6 +12,7 @@ pub(crate) struct SchemaManager {
 }
 
 #[repr(C)]
+#[derive(Clone, PartialEq)]
 pub enum ParameterValue {
     ValBool(bool),
     ValI32(i32),

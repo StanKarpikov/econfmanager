@@ -90,7 +90,7 @@ fn format_anyvalue(v: &ParameterValue) -> String {
 }
 
 fn generate_parameter_ids(parameters: &Vec<Parameter>, build_dir: String)  -> Result<(), Box<dyn std::error::Error>> {
-    let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("    {},", get_parameter_name_for_enum(&parameter.name_id.to_string()))).collect();
+    let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("    {}", get_parameter_name_for_enum(&parameter.name_id.to_string()))).collect();
 
     let dest_path = Path::new(&build_dir).join("parameter_ids.proto");
     let mut f = File::create(dest_path)?;
@@ -107,20 +107,25 @@ fn generate_parameter_ids(parameters: &Vec<Parameter>, build_dir: String)  -> Re
 }
 
 fn generate_parameter_enum(parameters: &Vec<Parameter>, build_dir: String)  -> Result<(), Box<dyn std::error::Error>> {
-    let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("    {},", get_parameter_name_for_enum(&parameter.name_id.to_string()))).collect();
+    let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("{}", get_parameter_name_for_enum(&parameter.name_id.to_string()))).collect();
     let array_entries: Vec<String> = parameters.iter().map(|parameter| format!("    \"{}\",", parameter.name_id)).collect();
 
     let dest_path = Path::new(&build_dir).join("generated.rs");
     let mut f = File::create(dest_path)?;
     
     writeln!(f, "use super::*;")?;
+    writeln!(f, "use num_enum::TryFromPrimitive;")?;
     writeln!(f, "use crate::schema::{{ParameterValue, ValidationMethod}};")?;
     writeln!(f, "/// Auto‐generated. See build.rs")?;
 
-    writeln!(f, "#[repr(C)]")?;
+    writeln!(f, "#[repr(usize)]")?;
+    writeln!(f, "#[derive(TryFromPrimitive, Debug, Clone, Copy, PartialEq, Eq)]")?;
     writeln!(f, "#[allow(non_camel_case_types)]")?;
     writeln!(f, "pub enum Parameters {{")?;
-    writeln!(f, "{}", enum_variants.join("\n"))?;
+    for (index, variant) in enum_variants.iter().enumerate() {
+        writeln!(f, "    {} = {},", variant, index)?;
+    }
+    writeln!(f, "    INVALID_PARAMETER,")?;
     writeln!(f, "}}")?;
     // writeln!(f, "pub const PARAMETER_ID: &[&str] = &[")?;
     // writeln!(f, "{}", array_entries.join("\n"))?;
@@ -139,7 +144,7 @@ fn generate_parameter_enum(parameters: &Vec<Parameter>, build_dir: String)  -> R
             ParameterValue::ValU64(_) => format!("ParameterValue::ValI32(0)"),
             ParameterValue::ValF32(_) => format!("ParameterValue::ValI32(0)"),
             ParameterValue::ValF64(_) => format!("ParameterValue::ValI32(0)"),
-            ParameterValue::ValBlob(items) => format!("ParameterValue::ValI32(0)"),
+            ParameterValue::ValBlob(_) => format!("ParameterValue::ValI32(0)"),
         };
         let validation_code = match &p.validation {
             ValidationMethod::None => "ValidationMethod::None".to_string(),
