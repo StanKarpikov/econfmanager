@@ -66,6 +66,7 @@ impl Drop for DbConnection {
 }
 
 
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status<T> {
     StatusOkChanged(T),

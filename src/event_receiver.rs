@@ -5,22 +5,10 @@ use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::interface::generated::ParameterId;
 
-mod services {
-    include!(concat!(env!("OUT_DIR"), "/", env!("SERVICE_PROTO_FILE_RS")));
-}
-mod parameter_ids {
-    include!(concat!(env!("OUT_DIR"), "/", env!("PARAMETER_IDS_PROTO_FILE_RS")));
-}
-use services::ParameterNotification;
+use crate::services::ParameterNotification;
 
 const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 123);
 const MULTICAST_PORT: u16 = 44321;
-
-// #[derive(Clone, PartialEq, Message)]
-// pub struct ParameterNotification {
-//     #[prost(message, tag = "1")]
-//     pub id: Option<ParameterIdApi>,
-// }
 
 pub(crate) struct EventReceiver {
 
@@ -29,7 +17,7 @@ pub(crate) struct EventReceiver {
 impl EventReceiver {
 
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let receiver_handle = std::thread::spawn(move || {
+        let _ = std::thread::spawn(move || {
             if let Err(e) = Self::multicast_receiver(MULTICAST_GROUP, MULTICAST_PORT) {
                 println!("Receiver error: {}", e);
             }
@@ -46,8 +34,8 @@ impl EventReceiver {
         // Join the multicast group
         socket.join_multicast_v4(&multicast_group, &local_addr)?;
         
-        // Set multicast loopback to receive our own messages (optional)
-        socket.set_multicast_loop_v4(true)?;
+        // Set multicast loopback to not receive our own messages
+        socket.set_multicast_loop_v4(false)?;
         
         let socket: UdpSocket = socket.into();
         

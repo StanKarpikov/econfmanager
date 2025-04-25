@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use crate::event_receiver::EventReceiver;
 use crate::notifier::Notifier;
 use crate::{configfile::Config, schema::Parameter};
 use crate::database_utils::{DatabaseManager, Status};
@@ -8,7 +9,7 @@ use crate::schema::ParameterValue;
 #[path = "../target/debug/generated.rs"] pub mod generated;
 use generated::{ParameterId, PARAMETER_DATA};
 
-pub struct InterfaceInstance {
+pub(crate) struct InterfaceInstance {
     database: DatabaseManager,
     notifier: Notifier
 }
@@ -22,12 +23,12 @@ impl InterfaceInstance {
         // let schema = SchemaManager::new("".to_owned(), descriptors_bytes.to_vec(), config.proto_name.clone())?;
         let database = DatabaseManager::new(config)?;
         let notifier = Notifier::new()?;
+        let _ = EventReceiver::new()?;
         Ok(Self{database, notifier})
     }
     
-    pub(crate) fn get(&self, id: ParameterId) -> &'static ParameterValue {
-        // self.database.read_or_create(id).unwrap()
-        &ParameterValue::ValI32(0)
+    pub(crate) fn get(&self, id: ParameterId) -> Result<ParameterValue, Box<dyn std::error::Error>> {
+        self.database.read_or_create(id)
     }
     
     pub(crate) fn set(&self, id: ParameterId, parameter: ParameterValue) -> Result<ParameterValue, Box<dyn std::error::Error>> {
@@ -37,7 +38,7 @@ impl InterfaceInstance {
                 Status::StatusOkChanged(value) | 
                 Status::StatusOkNotChecked(value) |
                 Status::StatusOkOverflowFixed(value) => {
-                    self.notifier.notify_of_parameter_change(id); Ok(value)
+                    self.notifier.notify_of_parameter_change(id)?; Ok(value)
                 }
                 Status::StatusOkNotChanged(value) => Ok(value),
                 Status::StatusErrorNotAccepted(_) => Err("Parameter no accepted".into()),
@@ -47,8 +48,8 @@ impl InterfaceInstance {
         }
     }
     
-    pub(crate) fn get_name(&self, id: ParameterId) -> *const u8 {
-        PARAMETER_DATA[id as usize].name_id.as_ptr()
+    pub(crate) fn get_name(&self, id: ParameterId) -> String {
+        PARAMETER_DATA[id as usize].name_id.to_owned()
     } 
 }
 

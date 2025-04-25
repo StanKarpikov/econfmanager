@@ -1,7 +1,8 @@
 use std::{error::Error, net::{Ipv4Addr, SocketAddrV4, UdpSocket}};
 use socket2::{Socket, Domain, Type, Protocol};
-
+use prost::Message;
 use crate::interface::generated::ParameterId;
+use crate::services::ParameterNotification;
 
 const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 123);
 const MULTICAST_PORT: u16 = 44321;
@@ -21,15 +22,14 @@ impl Notifier {
         // Set Time-to-Live (TTL) for multicast
         socket.set_ttl(1)?;  // Limit to local network
         
-        // let notification = ParameterNotification {
-        //     id as i32,
-        // };
+        let notification = ParameterNotification{id:id as i32};
 
-        // let mut buf = Vec::new();
-        // notification.encode(&mut buf)?;
+        let mut buf = Vec::new();
+        buf.reserve(notification.encoded_len());
+        notification.encode(&mut buf)?;
 
-        // let message = id;
-        // socket.send_to(&buf, (MULTICAST_GROUP, MULTICAST_PORT))?;
+        let message = id;
+        socket.send_to(&buf, (MULTICAST_GROUP, MULTICAST_PORT))?;
         
         Ok(())
     }

@@ -136,7 +136,7 @@ fn generate_parameter_enum(parameters: &Vec<Parameter>, build_dir: String)  -> R
     for (index, variant) in enum_variants.iter().enumerate() {
         writeln!(f, "    {} = {},", variant, index)?;
     }
-    writeln!(f, "    INVALID_PARAMETER,")?;
+    // writeln!(f, "    INVALID_PARAMETER = isize::MAX,")?;
     writeln!(f, "}}")?;
     // writeln!(f, "pub const PARAMETER_ID: &[&str] = &[")?;
     // writeln!(f, "{}", array_entries.join("\n"))?;
