@@ -81,11 +81,11 @@ impl SchemaManager {
         }
         let pool = DescriptorPool::decode(&*descriptor_bytes)?;
     
-        let config_descriptor = pool.get_message_by_name("Configuration")
+        let config_descriptor = pool.get_message_by_name("parameters.Configuration")
             .ok_or("Configuration message not found in descriptor pool")?;
         
         let file_descriptor = pool.get_file_by_name(&proto_name)
-        .ok_or("configuration.proto file descriptor not found")?;
+        .ok_or(format!("{} file descriptor not found", proto_name))?;
 
         Ok(Self { config_descriptor, file_descriptor })
     }
