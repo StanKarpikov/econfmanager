@@ -5,9 +5,12 @@ use std::process::Command;
 use std::io::Write;
 
 #[path = "src/schema.rs"] pub mod schema;
-use schema::{AnyValue, Parameter, SchemaManager, ValidationMethod};
+use schema::{ParameterValue, Parameter, SchemaManager, ValidationMethod};
 // #[path = "src/configfile.rs"] pub mod config;
 // use config::Config;
+
+const OPTIONS_PROTO_FILE: &str = "options.proto";
+const PARAMETERS_PROTO_FILE: &str = "parameters.proto";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::var("OUT_DIR").expect("no variable called OUT_DIR");
@@ -15,8 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let proto_path = Path::new(&out_dir);
     let descriptor_path = proto_path.join("descriptors.bin");
-    let configuration_proto = "configuration.proto";
-    println!("cargo:rustc-env=CONFIGURATION_PROTO_FILE={configuration_proto}");
+    println!("cargo:rustc-env=CONFIGURATION_PROTO_FILE={PARAMETERS_PROTO_FILE}");
     fs::create_dir_all(proto_path)?;
 
     // Run protoc to generate the descriptor set
@@ -25,16 +27,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg("--descriptor_set_out")
         .arg(&descriptor_path)
         .arg("--proto_path=proto_conf")
-        .arg("configuration.proto")
-        .arg("configuration_options.proto")
+        .arg(PARAMETERS_PROTO_FILE)
+        .arg(OPTIONS_PROTO_FILE)
         .status()?;
     
     if !status.success() {
         return Err("protoc failed to generate descriptors".into());
     }
     
-    println!("cargo:rerun-if-changed=configuration.proto");
-    println!("cargo:rerun-if-changed=configuration_options.proto");
+    println!("cargo:rerun-if-changed={}", PARAMETERS_PROTO_FILE);
+    println!("cargo:rerun-if-changed={}", OPTIONS_PROTO_FILE);
 
     let build_dir = out_dir
         .ancestors()
@@ -44,8 +46,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let config = Config::new(descriptor_path.to_str().unwrap().to_owned(),
     //                                  protofile_path.to_str().unwrap().to_owned(), 
     //                                  "".to_owned())?;
-    let schema = SchemaManager::new(descriptor_path.to_str().unwrap().to_owned(), Vec::new(), "configuration.proto".to_owned())?;
-    generate_parameter_enum(schema.get_parameters()?, build_dir.to_str().unwrap().to_owned())?;
+    let schema = SchemaManager::new(descriptor_path.to_str().unwrap().to_owned(), Vec::new(), PARAMETERS_PROTO_FILE.to_owned())?;
+    let parameters = schema.get_parameters()?;
+    generate_parameter_enum(&parameters, build_dir.to_str().unwrap().to_owned())?;
+
+    generate_parameter_ids(&parameters, build_dir.to_str().unwrap().to_owned())?;
 
     let header_path = build_dir.join("econfmanager.h");
     let status = Command::new("cbindgen")
@@ -64,40 +69,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn get_parameter_name_for_enum(name_id: &String) -> String {
-    // name_id
-    //     .chars()
-    //     .map(|c| {
-    //         // if c == '_' {
-    //         //     '_'
-    //         // } else if c == '@' {
-    //         //     '_'
-    //         // } else {
-    //             c
-    //         // }
-    //     })
-    //     .collect()
     name_id.split('@')
             .map(|part| part.to_uppercase())
             .collect::<Vec<_>>()
             .join("_")
 }
 
-fn format_anyvalue(v: &AnyValue) -> String {
+fn format_anyvalue(v: &ParameterValue) -> String {
     match v {
-        AnyValue::ValBool(b)   => format!("AnyValue::ValBool({})", b),
-        AnyValue::ValI32(i)    => format!("AnyValue::ValI32({})", i),
-        AnyValue::ValString(s) => format!("AnyValue::ValString(String::from({:?}))", s),
-        AnyValue::ValU32(_) => format!("AnyValue::ValI32(0)"),
-        AnyValue::ValI64(_) => format!("AnyValue::ValI32(0)"),
-        AnyValue::ValU64(_) => format!("AnyValue::ValI32(0)"),
-        AnyValue::ValF32(_) => format!("AnyValue::ValI32(0)"),
-        AnyValue::ValF64(_) => format!("AnyValue::ValI32(0)"),
-        AnyValue::ValBlob(items) => format!("AnyValue::ValI32(0)"),
+        ParameterValue::ValBool(b)   => format!("ParameterValue::ValBool({})", b),
+        ParameterValue::ValI32(i)    => format!("ParameterValue::ValI32({})", i),
+        ParameterValue::ValString(s) => format!("ParameterValue::ValString(String::from({:?}))", s),
+        ParameterValue::ValU32(_) => format!("ParameterValue::ValI32(0)"),
+        ParameterValue::ValI64(_) => format!("ParameterValue::ValI32(0)"),
+        ParameterValue::ValU64(_) => format!("ParameterValue::ValI32(0)"),
+        ParameterValue::ValF32(_) => format!("ParameterValue::ValI32(0)"),
+        ParameterValue::ValF64(_) => format!("ParameterValue::ValI32(0)"),
+        ParameterValue::ValBlob(items) => format!("ParameterValue::ValI32(0)"),
     }
 }
 
-fn generate_parameter_enum(parameters: Vec<Parameter>, build_dir: String)  -> Result<(), Box<dyn std::error::Error>> {
+fn generate_parameter_ids(parameters: &Vec<Parameter>, build_dir: String)  -> Result<(), Box<dyn std::error::Error>> {
+    let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("    {},", get_parameter_name_for_enum(&parameter.name_id.to_string()))).collect();
 
+    let dest_path = Path::new(&build_dir).join("parameter_ids.proto");
+    let mut f = File::create(dest_path)?;
+
+    writeln!(f, "// Auto-generated. See build.rs")?;
+    writeln!(f, "syntax = \"proto3\";")?;
+    writeln!(f, "")?;
+    writeln!(f, "enum ParameterId {{")?;
+    for (index, variant) in enum_variants.iter().enumerate() {
+        writeln!(f, "{} = {};", variant, index)?;
+    }
+    writeln!(f, "}}")?;
+    Ok(())
+}
+
+fn generate_parameter_enum(parameters: &Vec<Parameter>, build_dir: String)  -> Result<(), Box<dyn std::error::Error>> {
     let enum_variants: Vec<String> = parameters.iter().map(|parameter| format!("    {},", get_parameter_name_for_enum(&parameter.name_id.to_string()))).collect();
     let array_entries: Vec<String> = parameters.iter().map(|parameter| format!("    \"{}\",", parameter.name_id)).collect();
 
@@ -105,6 +114,7 @@ fn generate_parameter_enum(parameters: Vec<Parameter>, build_dir: String)  -> Re
     let mut f = File::create(dest_path)?;
     
     writeln!(f, "use super::*;")?;
+    writeln!(f, "use crate::schema::{{ParameterValue, ValidationMethod}};")?;
     writeln!(f, "/// Auto‐generated. See build.rs")?;
 
     writeln!(f, "#[repr(C)]")?;
@@ -120,18 +130,18 @@ fn generate_parameter_enum(parameters: Vec<Parameter>, build_dir: String)  -> Re
 
     for p in parameters {
         // For each field we serialize into Rust syntax:
-        let value_code = match p.value {
-            AnyValue::ValBool(b)   => format!("AnyValue::ValBool({})", b),
-            AnyValue::ValI32(i)    => format!("AnyValue::ValI32({})", i),
-            AnyValue::ValString(s) => format!("AnyValue::ValString(String::from({:?}))", s),
-            AnyValue::ValU32(_) => format!("AnyValue::ValI32(0)"),
-            AnyValue::ValI64(_) => format!("AnyValue::ValI32(0)"),
-            AnyValue::ValU64(_) => format!("AnyValue::ValI32(0)"),
-            AnyValue::ValF32(_) => format!("AnyValue::ValI32(0)"),
-            AnyValue::ValF64(_) => format!("AnyValue::ValI32(0)"),
-            AnyValue::ValBlob(items) => format!("AnyValue::ValI32(0)"),
+        let value_code = match &p.value {
+            ParameterValue::ValBool(b)   => format!("ParameterValue::ValBool({})", b),
+            ParameterValue::ValI32(i)    => format!("ParameterValue::ValI32({})", i),
+            ParameterValue::ValString(s) => format!("ParameterValue::ValString(String::from({:?}))", s),
+            ParameterValue::ValU32(_) => format!("ParameterValue::ValI32(0)"),
+            ParameterValue::ValI64(_) => format!("ParameterValue::ValI32(0)"),
+            ParameterValue::ValU64(_) => format!("ParameterValue::ValI32(0)"),
+            ParameterValue::ValF32(_) => format!("ParameterValue::ValI32(0)"),
+            ParameterValue::ValF64(_) => format!("ParameterValue::ValI32(0)"),
+            ParameterValue::ValBlob(items) => format!("ParameterValue::ValI32(0)"),
         };
-        let validation_code = match p.validation {
+        let validation_code = match &p.validation {
             ValidationMethod::None => "ValidationMethod::None".to_string(),
             ValidationMethod::Range { min, max } => format!(
                         "ValidationMethod::Range {{ min: {}, max: {} }}",
@@ -165,6 +175,5 @@ fn generate_parameter_enum(parameters: Vec<Parameter>, build_dir: String)  -> Re
 
     writeln!(f, "];")?;
 
-    // fs::write(dest_path, output).unwrap();
     Ok(())
 }

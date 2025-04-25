@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package options;
 
+import "custom_types.proto";
 import "google/protobuf/descriptor.proto";
 
 extend google.protobuf.FileOptions {
@@ -15,22 +16,23 @@ enum ValidationMethod {
     CUSTOM_CALLBACK = 3; // Validate using a callback function
 }
 
-message AnyValue {
+message ParameterValue {
     oneof value_type {
         int32 val_int = 1;
         float val_float = 2;
         string val_str = 3;
+        CustomType val_custom = 4;
     }
 }
 
 extend google.protobuf.FieldOptions {
     ValidationMethod validation = 50001;
-    AnyValue min = 50002;
-    AnyValue max = 50003;
-    repeated AnyValue allowed_values = 50004;
+    ParameterValue min = 50002;
+    ParameterValue max = 50003;
+    repeated ParameterValue allowed_values = 50004;
     string custom_callback = 50005;
     string comment = 50006;
-    AnyValue default_value = 50007;
+    ParameterValue default_value = 50007;
     bool is_const = 50008;
     repeated string tags = 50009;
 }

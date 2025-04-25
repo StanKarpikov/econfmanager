@@ -13,7 +13,7 @@ pub(crate) struct SchemaManager {
 }
 
 #[repr(C)]
-pub enum AnyValue {
+pub enum ParameterValue {
     ValBool(bool),
     ValI32(i32),
     ValU32(u32),
@@ -29,18 +29,18 @@ pub enum AnyValue {
 pub enum ValidationMethod {
     None,           // Default: no validation
     Range {
-        min: AnyValue,
-        max: AnyValue,
+        min: ParameterValue,
+        max: ParameterValue,
     },
     AllowedValues {
-        values: Vec<AnyValue>
+        values: Vec<ParameterValue>
     },
     CustomCallback, // Validate using a callback function
 }
 
 #[repr(C)]
 pub struct Parameter {
-    pub value: AnyValue,
+    pub value: ParameterValue,
     pub name_id: &'static str,
     pub validation: ValidationMethod,
     pub comment: &'static str,
@@ -111,18 +111,18 @@ impl SchemaManager {
                         let field_type = pm_field.kind();
                         let parameter = Parameter{ 
                             value: match field_type {
-                                prost_reflect::Kind::Double => AnyValue::ValF64(0.0),
-                                prost_reflect::Kind::Float => AnyValue::ValF32(0.0),
-                                prost_reflect::Kind::Int32 => AnyValue::ValI32(0),
-                                prost_reflect::Kind::Int64 => AnyValue::ValI32(0),
-                                prost_reflect::Kind::Uint32 => AnyValue::ValI32(0),
-                                prost_reflect::Kind::Uint64 => AnyValue::ValI32(0), 
-                                prost_reflect::Kind::Bool => AnyValue::ValI32(0),
-                                prost_reflect::Kind::String => AnyValue::ValI32(0),
-                                prost_reflect::Kind::Bytes => AnyValue::ValI32(0),
+                                prost_reflect::Kind::Double => ParameterValue::ValF64(0.0),
+                                prost_reflect::Kind::Float => ParameterValue::ValF32(0.0),
+                                prost_reflect::Kind::Int32 => ParameterValue::ValI32(0),
+                                prost_reflect::Kind::Int64 => ParameterValue::ValI32(0),
+                                prost_reflect::Kind::Uint32 => ParameterValue::ValI32(0),
+                                prost_reflect::Kind::Uint64 => ParameterValue::ValI32(0), 
+                                prost_reflect::Kind::Bool => ParameterValue::ValI32(0),
+                                prost_reflect::Kind::String => ParameterValue::ValI32(0),
+                                prost_reflect::Kind::Bytes => ParameterValue::ValI32(0),
                                 // prost_reflect::Kind::Message(message_descriptor) => todo!(),
-                                prost_reflect::Kind::Enum(enum_descriptor) => AnyValue::ValI32(0),
-                                _ => AnyValue::ValI32(0), //todo!()
+                                prost_reflect::Kind::Enum(enum_descriptor) => ParameterValue::ValI32(0),
+                                _ => ParameterValue::ValI32(0), //todo!()
                             },
                             // NOTE: Leak is okay since this function is only called at build time
                             name_id: Box::leak(Box::new(format!("{}@{}", field.name().to_string(), pm_field.name().to_string()))), 
