@@ -252,9 +252,8 @@ fn generate_parameter_functions(
     let mut f = File::create(dest_path)?;
 
     writeln!(f, "/// Auto‐generated. See build.rs\n")?;
-    writeln!(f, "#![allow(non_camel_case_types)]")?;
     
-    writeln!(f, "use crate::{{get_i32, set_i32, get_f32, set_f32, interface::generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
+    writeln!(f, "use crate::{{lib_helper_functions::{{get_i32, set_i32, get_f32, set_f32}}, interface::generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
     
     for (pm_id, p) in parameters.iter().enumerate() {
         let pm_enum_name = get_parameter_name_for_enum(&p.name_id.to_string());
@@ -271,6 +270,7 @@ fn generate_parameter_functions(
             ParameterValue::ValBlob(_) => "c_char",
         };
 
+        writeln!(f, "#[allow(non_camel_case_types)]")?;
         writeln!(f, "type {}_t = {}; \n", pm_name, pm_type)?;
 
         writeln!(f, "#[unsafe(no_mangle)]")?;
