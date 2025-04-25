@@ -6,7 +6,8 @@ use crate::{configfile::Config, interface::generated::{Parameters, PARAMETER_DAT
 
 pub(crate) struct DatabaseManager {
     database_path: String,
-    db_opened: bool
+    db_opened: bool,
+    last_update_timestamp: f64
 }
 
 pub struct DbConnection {
@@ -146,7 +147,7 @@ impl DatabaseManager {
      ******************************************************************************/
     
     pub(crate) fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> { 
-        let database_manager = Self { database_path: config.database_path, db_opened: false };
+        let database_manager = Self { database_path: config.database_path, db_opened: false, last_update_timestamp: 0.0 };
         DbConnection::new(&database_manager.database_path, true, true)?;
         Ok(database_manager)
     }
@@ -370,5 +371,61 @@ impl DatabaseManager {
         Ok(Ok(value))
     }
     
+    pub fn update(&mut self) -> Result<(), Box<dyn Error>> {
+        let sql = "SELECT key FROM configuration WHERE timestamp >= ?";
+        let check_start = Self::get_timestamp();
+        let mut pending_callbacks: Vec<Parameters> = Vec::new();
+
+        let db = DbConnection::new(&self.database_path, false, false)?;
+
+        let conn = db.conn.as_ref().ok_or("Database not open")?;
+        let mut stmt = conn.prepare(sql)?;
+        let mut rows = stmt.query(params![self.last_update_timestamp])?;
+
+        while let Some(row) = rows.next()? {
+            let key = row.get::<usize, String>(0)?;
+
+            let id = PARAMETER_DATA.iter()
+                        .position(|pm| pm.name_id == key)
+                        .expect("Parameter not found");
+
+            let pm_id = match Parameters::try_from(id) {
+                Ok(param) => {
+                    param
+                }
+                Err(_) => {
+                    println!("Invalid parameter value: {}", id);
+                }
+            }
+
+            // let parameter_def = &PARAMETER_DATA[id as usize];
+            // let sql_value = row.get(1)?;
+            // let value_result = match parameter_def.value {
+            //     ParameterValue::ValBool(_) => Self::db_to_bool(sql_value),
+            //     ParameterValue::ValI32(_) => Self::db_to_i32(sql_value),
+            //     ParameterValue::ValU32(_) => Self::db_to_u32(sql_value),
+            //     ParameterValue::ValI64(_) => Self::db_to_i64(sql_value),
+            //     ParameterValue::ValU64(_) => Self::db_to_u64(sql_value),
+            //     ParameterValue::ValF32(_) => Self::db_to_f32(sql_value),
+            //     ParameterValue::ValF64(_) => Self::db_to_f64(sql_value),
+            //     ParameterValue::ValString(_) =>Self::db_to_string(sql_value),
+            //     ParameterValue::ValBlob(_) => Self::db_to_blob(sql_value),
+            // };
+
+            // validate
+
+            pending_callbacks.push(pm_id);
+        }
+
+        self.last_update_timestamp = check_start;
+
+        for key in pending_callbacks {
+            // if let Some((callback, _)) = self.callbacks.get(key) {
+            //     callback();
+            // }
+        }
+
+        Ok(())
+    }
 
 }

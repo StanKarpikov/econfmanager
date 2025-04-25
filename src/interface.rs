@@ -1,5 +1,5 @@
 use crate::{configfile::Config, schema::Parameter};
-use crate::database_utils::DatabaseManager;
+use crate::database_utils::{DatabaseManager, Status};
 use crate::schema::{ParameterValue, SchemaManager};
 
 #[path = "../target/debug/generated.rs"] pub mod generated;
@@ -25,7 +25,15 @@ impl InterfaceInstance {
     }
     
     pub(crate) fn set(&self, id: Parameters, parameter: ParameterValue) -> &'static ParameterValue {
-        self.database.write(id, parameter)
+        match self.database.write(id, parameter, false)
+        {
+            Ok(status) => match status {
+                Ok(Status::StatusOkChanged) => todo!(),
+                Err(_) => todo!(),
+                Ok(_) => todo!(),
+            },
+            Err(_) => todo!(),
+        }
     }
     
     pub(crate) fn get_name(&self, id: Parameters) -> *const u8 {
