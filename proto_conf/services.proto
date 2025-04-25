@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+import "options.proto";
+import "parameter_ids.proto";
+
+package services;
+
+message ParameterNotification {
+  parameter_ids.ParameterIdApi id = 1;
+};

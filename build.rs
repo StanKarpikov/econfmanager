@@ -11,6 +11,9 @@ use schema::{ParameterValue, Parameter, SchemaManager, ValidationMethod};
 
 const OPTIONS_PROTO_FILE: &str = "options.proto";
 const PARAMETERS_PROTO_FILE: &str = "parameters.proto";
+const SERVICE_PROTO_FILE: &str = "services.proto";
+const SERVICE_PROTO_FILE_RS: &str = "services.rs";
+const PARAMETER_IDS_PROTO_FILE_RS: &str = "parameter_ids.rs";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::var("OUT_DIR").expect("no variable called OUT_DIR");
@@ -18,7 +21,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let proto_path = Path::new(&out_dir);
     let descriptor_path = proto_path.join("descriptors.bin");
+    println!("cargo:rustc-env=SERVICE_PROTO_FILE_RS={SERVICE_PROTO_FILE_RS}");
     println!("cargo:rustc-env=CONFIGURATION_PROTO_FILE={PARAMETERS_PROTO_FILE}");
+    println!("cargo:rustc-env=PARAMETER_IDS_PROTO_FILE_RS={PARAMETER_IDS_PROTO_FILE_RS}");
     fs::create_dir_all(proto_path)?;
 
     // Run protoc to generate the descriptor set
@@ -34,9 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !status.success() {
         return Err("protoc failed to generate descriptors".into());
     }
-    
+
     println!("cargo:rerun-if-changed={}", PARAMETERS_PROTO_FILE);
     println!("cargo:rerun-if-changed={}", OPTIONS_PROTO_FILE);
+    println!("cargo:rerun-if-changed={}", SERVICE_PROTO_FILE);
 
     let build_dir = out_dir
         .ancestors()
@@ -65,6 +71,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("cbindgen failed with status: {}", status);
     }
 
+    prost_build::compile_protos(
+        &[format!("proto_conf/{}", SERVICE_PROTO_FILE), format!("{}/{}", build_dir.to_str().unwrap(), "parameter_ids.proto")],
+        &["proto_conf/", build_dir.to_str().unwrap()]
+    )?;
+    // eprintln!("path = {}", out_dir.to_str().unwrap());
     Ok(())
 }
 
@@ -97,8 +108,8 @@ fn generate_parameter_ids(parameters: &Vec<Parameter>, build_dir: String)  -> Re
 
     writeln!(f, "// Auto-generated. See build.rs")?;
     writeln!(f, "syntax = \"proto3\";")?;
-    writeln!(f, "")?;
-    writeln!(f, "enum ParameterId {{")?;
+    writeln!(f, "package parameter_ids;")?;
+    writeln!(f, "enum ParameterIdApi {{")?;
     for (index, variant) in enum_variants.iter().enumerate() {
         writeln!(f, "{} = {};", variant, index)?;
     }
@@ -121,7 +132,7 @@ fn generate_parameter_enum(parameters: &Vec<Parameter>, build_dir: String)  -> R
     writeln!(f, "#[repr(usize)]")?;
     writeln!(f, "#[derive(TryFromPrimitive, Debug, Clone, Copy, PartialEq, Eq)]")?;
     writeln!(f, "#[allow(non_camel_case_types)]")?;
-    writeln!(f, "pub enum Parameters {{")?;
+    writeln!(f, "pub enum ParameterId {{")?;
     for (index, variant) in enum_variants.iter().enumerate() {
         writeln!(f, "    {} = {},", variant, index)?;
     }

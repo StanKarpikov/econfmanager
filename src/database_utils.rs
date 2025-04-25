@@ -1,8 +1,7 @@
 use std::{error::Error, time::{SystemTime, UNIX_EPOCH}};
-use prost_reflect::{DynamicMessage, ReflectMessage, Value};
-use rusqlite::{params, Connection, OpenFlags, ToSql, Transaction};
+use rusqlite::{params, Connection, OpenFlags, ToSql};
 
-use crate::{configfile::Config, interface::generated::{Parameters, PARAMETER_DATA}, schema::ParameterValue};
+use crate::{configfile::Config, interface::generated::{ParameterId, PARAMETER_DATA}, schema::ParameterValue};
 
 pub(crate) struct DatabaseManager {
     database_path: String,
@@ -68,24 +67,13 @@ impl Drop for DbConnection {
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    StatusOkChanged,
-    StatusOkNotChanged,
-    StatusOkNotChecked,
-    StatusOkOverflowFixed,
-    StatusErrorNotAccepted,
+pub enum Status<T> {
+    StatusOkChanged(T),
+    StatusOkNotChanged(T),
+    StatusOkNotChecked(T),
+    StatusOkOverflowFixed(T),
+    StatusErrorNotAccepted(T),
     StatusErrorFailed,
-}
-
-impl Status {
-    pub fn is_ok(&self) -> bool {
-        matches!(self, Status::StatusOkChanged | Status::StatusOkNotChanged | Status::StatusOkNotChecked)
-    }
-
-    pub fn is_error(&self) -> bool {
-        matches!(self, Status::StatusErrorNotAccepted | 
-                      Status::StatusErrorFailed)
-    }
 }
 
 impl DatabaseManager {
@@ -94,41 +82,6 @@ impl DatabaseManager {
      * PRIVATE FUNCTIONS
      ******************************************************************************/
 
-    fn insert_fields(
-        tx: &Transaction,
-        message: &DynamicMessage,
-        prefix: &str,
-        timestamp: f64
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut stmt = tx.prepare("INSERT OR REPLACE INTO configuration (key, value, timestamp) VALUES (?1, ?2, ?3)")?;
-    
-        for field in message.descriptor().fields() {
-            let field_name = field.name();
-            let full_key = if prefix.is_empty() {
-                field_name.to_string()
-            } else {
-                format!("{}@{}", prefix, field_name)
-            };
-            
-            let value = &*message.get_field(&field);
-            let sql_value = match value {
-                Value::I32(v) => rusqlite::types::Value::Integer(*v as i64),
-                Value::I64(v) => rusqlite::types::Value::Integer(*v),
-                Value::U32(v) => rusqlite::types::Value::Integer(*v as i64),
-                Value::U64(v) => rusqlite::types::Value::Integer(*v as i64),
-                Value::F32(v) => rusqlite::types::Value::Real(*v as f64),
-                Value::F64(v) => rusqlite::types::Value::Real(*v),
-                Value::Bool(v) => rusqlite::types::Value::Integer(if *v { 1 } else { 0 }),
-                Value::String(v) => rusqlite::types::Value::Text(v.clone()),
-                Value::Bytes(v) => rusqlite::types::Value::Blob(v.to_vec()),
-                _ => rusqlite::types::Value::Null,
-            };
-            
-            stmt.execute((&full_key, sql_value, timestamp))?;
-        }
-        Ok(())
-    }
-    
     /// Returns current timestamp with seconds and milliseconds as a floating-point number
     /// (e.g. 1712345678.456 for 456 milliseconds past the second)
     fn get_timestamp() -> f64 {
@@ -153,7 +106,9 @@ impl DatabaseManager {
     }
 
     pub(crate) fn set_sqlite_version(&self, version: u32) -> Result<(), Box<dyn Error>> {
-        self.conn.pragma_update(None, "user_version", version)?;
+        let db = DbConnection::new(&self.database_path, false, false)?;
+        
+        db.conn().pragma_update(None, "user_version", version)?;
     
         // let user_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
         // println!("Database user_version set to: {}", user_version);
@@ -281,7 +236,7 @@ impl DatabaseManager {
         }
     }
 
-    pub(crate) fn read_or_create(&self, id: Parameters) -> Result<ParameterValue, Box<dyn Error>> {
+    pub(crate) fn read_or_create(&self, id: ParameterId) -> Result<ParameterValue, Box<dyn Error>> {
         let db = DbConnection::new(&self.database_path, false, false)?;
         
         let sql = "SELECT value FROM configuration WHERE key = ?";
@@ -328,10 +283,10 @@ impl DatabaseManager {
 
     pub fn write(
         &self, 
-        id: Parameters,
+        id: ParameterId,
         value: ParameterValue,
         force: bool,
-    ) -> Result<Result<ParameterValue, Status>, Box<dyn Error>> {
+    ) -> Result<Status<ParameterValue>, Box<dyn Error>> {
         
         // validate(id, &value)?;
         
@@ -339,7 +294,7 @@ impl DatabaseManager {
         if !force {
             let current = self.read_or_create(id).unwrap();
             if current == value {
-                return Ok(Ok(value));
+                return Ok(Status::StatusOkNotChanged(value));
             }
         }
         
@@ -368,13 +323,13 @@ impl DatabaseManager {
             Self::get_timestamp(),
         ])?;
         
-        Ok(Ok(value))
+        Ok(Status::StatusOkChanged(value))
     }
     
     pub fn update(&mut self) -> Result<(), Box<dyn Error>> {
         let sql = "SELECT key FROM configuration WHERE timestamp >= ?";
         let check_start = Self::get_timestamp();
-        let mut pending_callbacks: Vec<Parameters> = Vec::new();
+        let mut pending_callbacks: Vec<ParameterId> = Vec::new();
 
         let db = DbConnection::new(&self.database_path, false, false)?;
 
@@ -389,14 +344,14 @@ impl DatabaseManager {
                         .position(|pm| pm.name_id == key)
                         .expect("Parameter not found");
 
-            let pm_id = match Parameters::try_from(id) {
+            let pm_id = match ParameterId::try_from(id) {
                 Ok(param) => {
                     param
                 }
                 Err(_) => {
-                    println!("Invalid parameter value: {}", id);
+                    return Err(format!("Invalid parameter value: {}", id).into());
                 }
-            }
+            };
 
             // let parameter_def = &PARAMETER_DATA[id as usize];
             // let sql_value = row.get(1)?;
