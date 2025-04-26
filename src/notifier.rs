@@ -1,5 +1,4 @@
-use std::{error::Error, net::{Ipv4Addr, SocketAddrV4, UdpSocket}};
-use socket2::{Socket, Domain, Type, Protocol};
+use std::net::UdpSocket;
 use prost::Message;
 use crate::interface::generated::ParameterId;
 use crate::services::ParameterNotification;

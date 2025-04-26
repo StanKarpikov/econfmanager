@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
 pub(crate) struct Config {
+    #[allow(unused)]
     #[serde(default = "default_proto_name")]
     pub proto_name: String,
     #[serde(default = "default_database_path")]
@@ -34,6 +35,7 @@ impl Config {
         Ok(Config{proto_name, database_path})
     }
 
+    #[allow(unused)]
     pub(crate) fn from_file(config_file:String) -> Config {
         let file_content = fs::read_to_string(std::path::Path::new(&config_file)).expect("Failed to read the file");
         let config: Config = serde_json::from_str(&file_content).expect("Failed to parse JSON");

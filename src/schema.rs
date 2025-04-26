@@ -25,6 +25,7 @@ pub enum ParameterValue {
     ValBlob(Vec<u8>),
 }
 
+#[allow(unused)]
 pub(crate) trait ParameterType: Clone {
     fn to_parameter_value(self) -> ParameterValue;
     fn from_parameter_value(value: ParameterValue) -> Option<Self>
@@ -83,12 +84,15 @@ pub struct Parameter {
     pub tags: Vec<&'static str>
 }
 
+// This implementation is used during build time
+#[allow(unused)]
 impl SchemaManager {
 
     /******************************************************************************
      * PRIVATE FUNCTIONS
      ******************************************************************************/
 
+    #[allow(unused)]
     fn get_required_version(&self) -> Result<u32, Box<dyn Error>> {
         let required_version = self.file_descriptor.options()
             .extensions()

@@ -20,7 +20,7 @@ pub mod parameters {
 
 use std::{ffi::{c_char, CString}, ptr, sync::{Arc, Mutex}};
 
-use interface::{generated::ParameterId, InterfaceInstance};
+use interface::{generated::ParameterId, InterfaceInstance, ParameterUpdateCallback};
 
 #[repr(C)]
 pub enum EconfStatus {
@@ -50,6 +50,7 @@ impl CInterfaceInstance {
         }
     }
     
+    #[allow(unused)]
     pub(crate) fn with_lock_mut<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut InterfaceInstance) -> R,
@@ -64,6 +65,7 @@ impl CInterfaceInstance {
         }
     }
     
+    #[allow(unused)]
     pub(crate) fn get_arc(&self) -> Arc<Mutex<InterfaceInstance>> {
         unsafe {
             if self.0.is_null() {
@@ -78,7 +80,7 @@ impl Drop for CInterfaceInstance {
     fn drop(&mut self) {
         if !self.0.is_null() {
             unsafe {
-                Box::from_raw(self.0);
+                let _ = Box::from_raw(self.0);
             }
         }
     }
@@ -103,24 +105,68 @@ pub extern "C" fn econf_init(
     EconfStatus::StatusOk
 }
 
-// #[unsafe(no_mangle)]
-// pub extern "C" fn econf_get_name(interface: CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
-//     let interface = interface.as_ref();
-//     let rust_string = interface.get_name(id);
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_get_name(interface: CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let interface = lock.lock().unwrap();
+        let rust_string = interface.get_name(id);
 
-//     let c_string = match CString::new(rust_string) {
-//         Ok(s) => s,
-//         Err(_) => return EconfStatus::StatusError,
-//     };
+        let c_string = match CString::new(rust_string) {
+            Ok(s) => s,
+            Err(_) => return EconfStatus::StatusError,
+        };
 
-//     let bytes = c_string.as_bytes_with_nul();
-    
-//     if bytes.len() > max_length {
-//         return EconfStatus::StatusError;
-//     }
+        let bytes = c_string.as_bytes_with_nul();
+        
+        if bytes.len() > max_length {
+            return EconfStatus::StatusError;
+        }
 
-//     unsafe {
-//         ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, name, bytes.len());
-//     }
-//     EconfStatus::StatusOk
-// }
+        unsafe {
+            ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, name, bytes.len());
+        }
+        EconfStatus::StatusOk
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_add_callback(interface: CInterfaceInstance, id: ParameterId, callback: ParameterUpdateCallback) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let mut interface = lock.lock().unwrap();
+        match interface.add_callback(id, callback) {
+            Ok(_) => {
+                EconfStatus::StatusOk
+            }
+            Err(_) => EconfStatus::StatusError,
+        }
+    });
+    EconfStatus::StatusOk
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_delete_callback(interface: CInterfaceInstance, id: ParameterId) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let mut interface = lock.lock().unwrap();
+        match interface.delete_callback(id) {
+            Ok(_) => {
+                EconfStatus::StatusOk
+            }
+            Err(_) => EconfStatus::StatusError,
+        }
+    });
+    EconfStatus::StatusOk
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_update_poll(interface: CInterfaceInstance) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let mut interface = lock.lock().unwrap();
+        match interface.update() {
+            Ok(_) => {
+                EconfStatus::StatusOk
+            }
+            Err(_) => EconfStatus::StatusError,
+        }
+    });
+    EconfStatus::StatusOk
+}

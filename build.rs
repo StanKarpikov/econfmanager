@@ -112,7 +112,7 @@ fn format_anyvalue(v: &ParameterValue) -> String {
         ParameterValue::ValU64(_) => format!("ParameterValue::ValI32(0)"),
         ParameterValue::ValF32(_) => format!("ParameterValue::ValI32(0)"),
         ParameterValue::ValF64(_) => format!("ParameterValue::ValI32(0)"),
-        ParameterValue::ValBlob(items) => format!("ParameterValue::ValI32(0)"),
+        ParameterValue::ValBlob(_) => format!("ParameterValue::ValI32(0)"),
     }
 }
 
@@ -157,10 +157,10 @@ fn generate_parameter_enum(
             )
         })
         .collect();
-    let array_entries: Vec<String> = parameters
-        .iter()
-        .map(|parameter| format!("    \"{}\",", parameter.name_id))
-        .collect();
+    // let array_entries: Vec<String> = parameters
+    //     .iter()
+    //     .map(|parameter| format!("    \"{}\",", parameter.name_id))
+    //     .collect();
 
     let dest_path = Path::new(&build_dir).join("generated.rs");
     let mut f = File::create(dest_path)?;
@@ -257,7 +257,7 @@ fn generate_parameter_functions(
     
     writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, set_parameter}}, interface::generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
     
-    for (pm_id, p) in parameters.iter().enumerate() {
+    for p in parameters {
         let pm_enum_name = get_parameter_name_for_enum(&p.name_id.to_string());
         let pm_name = get_parameter_name_for_function(&p.name_id.to_string());
         let pm_type = match &p.value {

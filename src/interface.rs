@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 use crate::event_receiver::EventReceiver;
@@ -10,7 +9,7 @@ use crate::schema::ParameterValue;
 #[path = "../target/debug/generated.rs"] pub mod generated;
 use generated::{ParameterId, PARAMETERS_NUM, PARAMETER_DATA};
 
-type ParameterUpdateCallback = fn(id: ParameterId);
+pub type ParameterUpdateCallback = extern fn(id: ParameterId);
 
 pub(crate) struct RuntimeParametersData {
     pub(crate) value: Option<ParameterValue>,
@@ -84,6 +83,10 @@ impl InterfaceInstance {
     
     pub(crate) fn get_name(&self, id: ParameterId) -> String {
         PARAMETER_DATA[id as usize].name_id.to_owned()
+    }
+
+    pub(crate) fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.database.update()
     }
 
     pub(crate) fn add_callback(&mut self, id: ParameterId, callback: ParameterUpdateCallback) -> Result<(), Box<dyn std::error::Error>> {

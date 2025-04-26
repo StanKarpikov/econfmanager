@@ -5,7 +5,6 @@ use crate::{configfile::Config, interface::generated::{ParameterId, PARAMETER_DA
 
 pub(crate) struct DatabaseManager {
     database_path: String,
-    db_opened: bool,
     last_update_timestamp: f64
 }
 
@@ -27,7 +26,7 @@ impl DbConnection {
 
         let conn = match Connection::open_with_flags(&database_path, flags) {
             Ok(conn) => {
-                conn.busy_timeout(std::time::Duration::from_millis(300));
+                let _ = conn.busy_timeout(std::time::Duration::from_millis(300));
                 conn
             },
             Err(e) => {
@@ -101,11 +100,12 @@ impl DatabaseManager {
      ******************************************************************************/
     
     pub(crate) fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> { 
-        let database_manager = Self { database_path: config.database_path, db_opened: false, last_update_timestamp: 0.0 };
+        let database_manager = Self { database_path: config.database_path, last_update_timestamp: 0.0 };
         DbConnection::new(&database_manager.database_path, true, true)?;
         Ok(database_manager)
     }
 
+    #[allow(unused)]
     pub(crate) fn set_sqlite_version(&self, version: u32) -> Result<(), Box<dyn Error>> {
         let db = DbConnection::new(&self.database_path, false, false)?;
         
@@ -319,7 +319,7 @@ impl DatabaseManager {
                 ParameterValue::ValF64(v) => v.to_sql()?,
                 ParameterValue::ValString(v) => v.as_str().to_sql()?,
                 ParameterValue::ValBlob(v) => v.to_sql()?,
-                _ => 0.to_sql()?,
+                // _ => 0.to_sql()?,
             },
             Self::get_timestamp(),
         ])?;
@@ -375,7 +375,7 @@ impl DatabaseManager {
 
         self.last_update_timestamp = check_start;
 
-        for key in pending_callbacks {
+        for _ in pending_callbacks {
             // if let Some((callback, _)) = self.callbacks.get(key) {
             //     callback();
             // }
