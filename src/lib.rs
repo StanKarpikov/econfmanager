@@ -18,7 +18,7 @@ pub mod parameters {
 }
 #[path = "../target/debug/parameter_functions.rs"] pub mod parameter_functions;
 
-use std::{ffi::{c_char, CString}, ptr};
+use std::{ffi::{c_char, CString}, ptr, sync::{Arc, Mutex}};
 
 use interface::{generated::ParameterId, InterfaceInstance};
 
@@ -29,19 +29,58 @@ pub enum EconfStatus {
 }
 
 #[repr(C)]
-pub struct CInterfaceInstance(*mut InterfaceInstance);
+pub struct CInterfaceInstance(*mut Arc<Mutex<InterfaceInstance>>);
 
 impl CInterfaceInstance {
-    fn new(state: InterfaceInstance) -> Self {
-        CInterfaceInstance(Box::into_raw(Box::new(state)))
+    pub(crate) fn new(state: InterfaceInstance) -> Self {
+        let boxed_arc = Box::new(Arc::new(Mutex::new(state)));
+        CInterfaceInstance(Box::into_raw(boxed_arc))
     }
     
-    fn as_ref(&self) -> &InterfaceInstance {
-        unsafe { &*self.0 }
+    pub(crate) fn with_lock<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&Mutex<InterfaceInstance>) -> R,
+    {
+        unsafe {
+            if self.0.is_null() {
+                panic!("Null pointer in CInterfaceInstance");
+            }
+            let arc = &*self.0;
+            f(&arc)
+        }
     }
     
-    fn as_mut(&mut self) -> &mut InterfaceInstance {
-        unsafe { &mut *self.0 }
+    pub(crate) fn with_lock_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut InterfaceInstance) -> R,
+    {
+        unsafe {
+            if self.0.is_null() {
+                panic!("Null pointer in CInterfaceInstance");
+            }
+            let arc = &*self.0;  // Immutable borrow of Arc
+            let mut guard = arc.lock().unwrap();  // Lock the Mutex
+            f(&mut guard)
+        }
+    }
+    
+    pub(crate) fn get_arc(&self) -> Arc<Mutex<InterfaceInstance>> {
+        unsafe {
+            if self.0.is_null() {
+                panic!("Null pointer in CInterfaceInstance");
+            }
+            (*self.0).clone()
+        }
+    }
+}
+
+impl Drop for CInterfaceInstance {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                Box::from_raw(self.0);
+            }
+        }
     }
 }
 
@@ -64,24 +103,24 @@ pub extern "C" fn econf_init(
     EconfStatus::StatusOk
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn econf_get_name(interface: CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
-    let interface = interface.as_ref();
-    let rust_string = interface.get_name(id);
+// #[unsafe(no_mangle)]
+// pub extern "C" fn econf_get_name(interface: CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
+//     let interface = interface.as_ref();
+//     let rust_string = interface.get_name(id);
 
-    let c_string = match CString::new(rust_string) {
-        Ok(s) => s,
-        Err(_) => return EconfStatus::StatusError,
-    };
+//     let c_string = match CString::new(rust_string) {
+//         Ok(s) => s,
+//         Err(_) => return EconfStatus::StatusError,
+//     };
 
-    let bytes = c_string.as_bytes_with_nul();
+//     let bytes = c_string.as_bytes_with_nul();
     
-    if bytes.len() > max_length {
-        return EconfStatus::StatusError;
-    }
+//     if bytes.len() > max_length {
+//         return EconfStatus::StatusError;
+//     }
 
-    unsafe {
-        ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, name, bytes.len());
-    }
-    EconfStatus::StatusOk
-}
+//     unsafe {
+//         ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, name, bytes.len());
+//     }
+//     EconfStatus::StatusOk
+// }

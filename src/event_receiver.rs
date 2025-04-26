@@ -1,4 +1,5 @@
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::sync::{Arc, Mutex};
 
 use prost::Message;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -6,21 +7,22 @@ use socket2::{Domain, Protocol, Socket, Type};
 use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
 use crate::interface::generated::{ParameterId, PARAMETERS_NUM};
 
+use crate::interface::{RuntimeParametersData, SharedRuntimeData};
+use crate::schema::ParameterValue;
 use crate::services::ParameterNotification;
 
-
+#[derive (Clone)]
 pub(crate) struct EventReceiver {
-    callbacks: [Option<ParameterUpdateCallback>; PARAMETERS_NUM],
+    runtime_data: Arc<Mutex<SharedRuntimeData>>
 }
-
-type ParameterUpdateCallback = fn(id: ParameterId);
 
 impl EventReceiver {
 
-    pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let instance = EventReceiver{callbacks: [None; PARAMETERS_NUM]};
+    pub(crate) fn new(runtime_data: Arc<Mutex<SharedRuntimeData>>) -> Result<Self, Box<dyn std::error::Error>> {
+        let instance = EventReceiver{runtime_data};
+        let thread_instance = instance.clone();
         let _ = std::thread::spawn(move || {
-            if let Err(e) = instance.multicast_receiver(MULTICAST_GROUP, MULTICAST_PORT) {
+            if let Err(e) = thread_instance.multicast_receiver(MULTICAST_GROUP, MULTICAST_PORT) {
                 println!("Receiver error: {}", e);
             }
         });
@@ -53,30 +55,17 @@ impl EventReceiver {
         }
     }
 
-    pub(crate) fn add_callback(&mut self, id: ParameterId, callback: ParameterUpdateCallback) -> Result<(), Box<dyn std::error::Error>> {
-        let index = id as usize;
-        if index < PARAMETERS_NUM {
-            self.callbacks[index] = Some(callback);
-            Ok(())
-        } else {
-            Err("Incorrect parameter ID".into())
-        }
-    }
-
-    pub(crate) fn delete_callback(&mut self, id: ParameterId) -> Result<(), Box<dyn std::error::Error>> {
-        let index = id as usize;
-        if index < PARAMETERS_NUM {
-            self.callbacks[index] = None;
-            Ok(())
-        } else {
-            Err("Incorrect parameter ID".into())
-        }
-    }
-
     pub(crate) fn notify_callback(&self, id: ParameterId) {
         let index = id as usize;
-        if !self.callbacks[index].is_none() {
-            self.callbacks[index].unwrap()(id);
+        let callback;
+        {
+            let mut data = self.runtime_data.lock().unwrap();
+            // Invalidate the cache so the next time the parameter is read it will be updated from the database
+            data.parameters_data[index].value = None;
+            callback = data.parameters_data[index].callback;
+        }
+        if callback.is_some() {
+            callback.unwrap()(id);
         }
     }
 }
