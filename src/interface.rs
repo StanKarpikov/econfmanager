@@ -8,6 +8,7 @@ use crate::schema::ParameterValue;
 
 #[path = "../target/debug/generated.rs"] pub mod generated;
 use generated::{ParameterId, PARAMETERS_NUM, PARAMETER_DATA};
+use timer::Guard;
 
 pub type ParameterUpdateCallback = extern fn(id: ParameterId);
 
@@ -30,7 +31,8 @@ impl SharedRuntimeData{
 pub(crate) struct InterfaceInstance {
     database: DatabaseManager,
     notifier: Notifier,
-    runtime_data: Arc<Mutex<SharedRuntimeData>>
+    runtime_data: Arc<Mutex<SharedRuntimeData>>,
+    pub(crate) poll_timer_guard: Option<Guard>
 }
 
 impl InterfaceInstance {
@@ -42,7 +44,7 @@ impl InterfaceInstance {
         let runtime_data = Arc::new(Mutex::new(SharedRuntimeData::new()?));
         let notifier = Notifier::new()?;
         let _ = EventReceiver::new(runtime_data.clone())?;
-        Ok(Self{database, notifier, runtime_data})
+        Ok(Self{database, notifier, runtime_data, poll_timer_guard:None })
     }
     
     pub(crate) fn get(&self, id: ParameterId, force: bool) -> Result<ParameterValue, Box<dyn std::error::Error>> {

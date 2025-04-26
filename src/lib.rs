@@ -18,8 +18,8 @@ pub mod parameters {
 }
 #[path = "../target/debug/parameter_functions.rs"] pub mod parameter_functions;
 
+use timer::Timer;
 use std::{ffi::{c_char, CString}, ptr, sync::{Arc, Mutex}};
-
 use interface::{generated::ParameterId, InterfaceInstance, ParameterUpdateCallback};
 
 #[repr(C)]
@@ -29,7 +29,10 @@ pub enum EconfStatus {
 }
 
 #[repr(C)]
+#[derive (Clone)]
 pub struct CInterfaceInstance(*mut Arc<Mutex<InterfaceInstance>>);
+
+unsafe impl Send for CInterfaceInstance {}
 
 impl CInterfaceInstance {
     pub(crate) fn new(state: InterfaceInstance) -> Self {
@@ -167,6 +170,34 @@ pub extern "C" fn econf_update_poll(interface: CInterfaceInstance) -> EconfStatu
             }
             Err(_) => EconfStatus::StatusError,
         }
+    });
+    EconfStatus::StatusOk
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_set_up_timer_poll(interface: CInterfaceInstance, timer_period_ms: i64) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let mut interface_guard = lock.lock().unwrap();
+
+        let timer = Timer::new();
+        
+        let arc_clone = (unsafe { &*interface.0 }).clone();
+        interface_guard.poll_timer_guard = Some(timer.schedule_repeating(chrono::Duration::milliseconds(timer_period_ms), move || {
+            let mut interface = arc_clone.lock().unwrap();
+            let _ = interface.update();
+        }));
+
+        EconfStatus::StatusOk
+    });
+    EconfStatus::StatusOk
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_stop_timer_poll(interface: CInterfaceInstance) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let mut interface = lock.lock().unwrap();
+        drop(interface.poll_timer_guard.clone().unwrap());
+        interface.poll_timer_guard = None;
     });
     EconfStatus::StatusOk
 }
