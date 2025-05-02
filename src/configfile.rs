@@ -12,6 +12,8 @@ pub(crate) struct Config {
     pub proto_name: String,
     #[serde(default = "default_database_path")]
     pub database_path: String,
+    #[serde(default = "default_saved_database_path")]
+    pub saved_database_path: String,
 }
 
 /******************************************************************************
@@ -26,13 +28,17 @@ fn default_database_path() -> String {
     "configuration.db".to_string()
 }
 
+fn default_saved_database_path() -> String {
+    "configuration_saved.db".to_string()
+}
+
 /******************************************************************************
  * PUBLIC FUNCTIONS
  ******************************************************************************/
 
 impl Config {
-    pub(crate) fn new(proto_name: String, database_path: String) -> Result<Config, Box<dyn std::error::Error>> {
-        Ok(Config{proto_name, database_path})
+    pub(crate) fn new(proto_name: String, database_path: String, saved_database_path: String) -> Result<Config, Box<dyn std::error::Error>> {
+        Ok(Config{proto_name, database_path, saved_database_path})
     }
 
     #[allow(unused)]

@@ -92,11 +92,13 @@ impl Drop for CInterfaceInstance {
 #[unsafe(no_mangle)]
 pub extern "C" fn econf_init(
         database_path: *const std::os::raw::c_char,
+        saved_database_path: *const std::os::raw::c_char,
         interface: *mut CInterfaceInstance
     ) -> EconfStatus {
     let database_path = unsafe { std::ffi::CStr::from_ptr(database_path).to_string_lossy().into_owned() };
+    let saved_database_path = unsafe { std::ffi::CStr::from_ptr(saved_database_path).to_string_lossy().into_owned() };
 
-    let r_instance = match InterfaceInstance::new(database_path) {
+    let r_instance = match InterfaceInstance::new(database_path, saved_database_path) {
         Ok(value) => value,
         Err(_) => return EconfStatus::StatusError,
     };
@@ -198,6 +200,34 @@ pub extern "C" fn econf_stop_timer_poll(interface: CInterfaceInstance) -> EconfS
         let mut interface = lock.lock().unwrap();
         drop(interface.poll_timer_guard.clone().unwrap());
         interface.poll_timer_guard = None;
+    });
+    EconfStatus::StatusOk
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_load(interface: CInterfaceInstance) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let mut interface = lock.lock().unwrap();
+        match interface.load() {
+            Ok(_) => {
+                EconfStatus::StatusOk
+            }
+            Err(_) => EconfStatus::StatusError,
+        }
+    });
+    EconfStatus::StatusOk
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn econf_save(interface: CInterfaceInstance) -> EconfStatus {
+    interface.with_lock(|lock| {
+        let mut interface = lock.lock().unwrap();
+        match interface.save() {
+            Ok(_) => {
+                EconfStatus::StatusOk
+            }
+            Err(_) => EconfStatus::StatusError,
+        }
     });
     EconfStatus::StatusOk
 }

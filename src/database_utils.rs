@@ -1,10 +1,12 @@
-use std::{error::Error, time::{SystemTime, UNIX_EPOCH}};
-use rusqlite::{params, Connection, OpenFlags, ToSql};
+use std::{error::Error, fs, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use rusqlite::{backup::Backup, params, Connection, OpenFlags, ToSql};
+use std::time::Duration;
 
 use crate::{configfile::Config, interface::generated::{ParameterId, PARAMETER_DATA}, schema::ParameterValue};
 
 pub(crate) struct DatabaseManager {
     database_path: String,
+    saved_database_path: String,
     last_update_timestamp: f64
 }
 
@@ -95,13 +97,46 @@ impl DatabaseManager {
         seconds + milliseconds
     }
     
+    fn copy_database(source_path: &Path, backup_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        let src_conn = Connection::open(source_path)?;
+        let mut dst_conn = Connection::open(backup_path)?;
+        
+        let backup = Backup::new(&src_conn, &mut dst_conn)?;
+        Ok(backup.run_to_completion(100, Duration::from_millis(250), None)?)
+    }
+
     /******************************************************************************
      * PUBLIC FUNCTIONS
      ******************************************************************************/
-    
-    pub(crate) fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> { 
-        let database_manager = Self { database_path: config.database_path, last_update_timestamp: 0.0 };
-        DbConnection::new(&database_manager.database_path, true, true)?;
+
+    pub(crate) fn load_database(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Self::copy_database(Path::new(&self.saved_database_path), Path::new(&self.database_path))
+    }
+
+    pub(crate) fn save_database(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Self::copy_database(Path::new(&self.database_path), Path::new(&self.saved_database_path))
+    }
+
+    pub(crate) fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
+        let database_manager = Self { 
+            database_path: config.database_path, 
+            saved_database_path: config.saved_database_path,
+            last_update_timestamp: 0.0 
+        };
+
+        match fs::metadata(&database_manager.database_path) {
+            Ok(metadata) if metadata.is_file() => {}
+            Ok(_) => {
+                return Err("Database file exists but is not a file".into())
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                println!("Database doesn't exist");
+                database_manager.load_database()?;
+            }
+            Err(e) => return Err(format!("Error checking database file: {}", e).into()),
+        }
+
+        DbConnection::new(&database_manager.database_path, true, false)?;
         Ok(database_manager)
     }
 
