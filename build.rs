@@ -40,11 +40,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-env=CONFIGURATION_PROTO_FILE={PARAMETERS_PROTO_FILE}");
     println!("cargo:rustc-env=PARAMETER_IDS_PROTO_FILE_RS={PARAMETER_IDS_PROTO_FILE_RS}");
 
-    fs::create_dir_all(generated_proto_path)?;
+    fs::create_dir_all(generated_proto_path)
+        .unwrap_or_else(|op|{panic!("Failed creating output dirs: {}", op)});
 
-    let abs_descriptor_path = canonicalize(generated_proto_path.join(DESCRIPTORS_FILE))?;
-    let abs_parameters_path = canonicalize(&parameters_proto_path)?;
-    let abs_proto_conf_path = canonicalize(PROTO_CONF_FOLDER)?;
+    let abs_descriptor_path = canonicalize(generated_proto_path)
+        .unwrap_or_else(|op|{panic!("Error getting path for generated files folder: {}", op)})
+        .join(DESCRIPTORS_FILE);
+    let abs_parameters_path = canonicalize(&parameters_proto_path)
+        .unwrap_or_else(|op|{panic!("Error getting path for parameters file: {}", op)});
+    let abs_proto_conf_path = canonicalize(PROTO_CONF_FOLDER)
+        .unwrap_or_else(|op|{panic!("Error getting path for proto_conf file: {}", op)});
 
     // Run protoc to generate the descriptor set
     let mut cmd = Command::new("protoc");
@@ -56,9 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(PARAMETERS_PROTO_FILE)
         .arg(OPTIONS_PROTO_FILE);
     eprintln!("Executing protoc: {:?}", cmd);
-    let status = cmd.status()?;
+    let status = cmd.status()
+        .unwrap_or_else(|op|{panic!("Error getting protoc command exit status: {}", op)});
     if !status.success() {
-        return Err("protoc failed to generate descriptors".into());
+        panic!("protoc failed to generate descriptors");
     }
 
     println!("cargo:rerun-if-changed={}", parameters_proto_flepath.to_string_lossy());
@@ -70,20 +76,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(3) // OUT_DIR is like target/debug/build/crate-hash/out
         .expect("Failed to find build directory");
 
-    // let config = Config::new(descriptor_path.to_str().unwrap().to_owned(),
-    //                                  protofile_path.to_str().unwrap().to_owned(),
-    //                                  "".to_owned())?;
     let schema = SchemaManager::new(
         abs_descriptor_path.into_os_string().into_string().unwrap(),
         Vec::new(),
         PARAMETERS_PROTO_FILE.to_owned(),
-    )?;
-    let parameters = schema.get_parameters()?;
-    generate_parameter_enum(&parameters, build_dir.to_str().unwrap().to_owned())?;
+    )
+        .unwrap_or_else(|op|{panic!("Error creating schema: {}", op)});
+    let parameters = schema.get_parameters()
+        .unwrap_or_else(|op|{panic!("Error getting parameters list: {}", op)});
+    generate_parameter_enum(&parameters, build_dir.to_str().unwrap().to_owned())
+        .unwrap_or_else(|op|{panic!("Error generating parameters enum: {}", op)});
 
-    generate_parameter_ids(&parameters, build_dir.to_str().unwrap().to_owned())?;
+    generate_parameter_ids(&parameters, build_dir.to_str().unwrap().to_owned())
+        .unwrap_or_else(|op|{panic!("Error generating parameters ids: {}", op)});
 
-    generate_parameter_functions(&parameters, build_dir.to_str().unwrap().to_owned())?;
+    generate_parameter_functions(&parameters, build_dir.to_str().unwrap().to_owned())
+        .unwrap_or_else(|op|{panic!("Error generating parameters functions: {}", op)});
 
     let header_path = build_dir.join("econfmanager.h");
     let status = Command::new("cbindgen")
@@ -109,7 +117,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             abs_parameters_path.to_str().unwrap(), 
             abs_proto_conf_path.to_str().unwrap()
         ],
-    )?;
+    )
+        .unwrap_or_else(|op|{panic!("Error compiling protos: {}", op)});
     // eprintln!("path = {}", out_dir.to_str().unwrap());
     Ok(())
 }

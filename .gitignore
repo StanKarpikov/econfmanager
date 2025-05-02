@@ -22,3 +22,5 @@ Cargo.lock
 *.db-shm
 
 *.bin
+examples/peripheral_service/build/*
+examples/peripheral_service/lib/*
