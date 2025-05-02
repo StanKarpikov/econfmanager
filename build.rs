@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
+use std::fs::canonicalize;
 
 #[path = "src/schema.rs"]
 pub mod schema;
@@ -14,34 +15,53 @@ const OPTIONS_PROTO_FILE: &str = "options.proto";
 const PARAMETERS_PROTO_FILE: &str = "parameters.proto";
 const SERVICE_PROTO_FILE: &str = "services.proto";
 const SERVICE_PROTO_FILE_RS: &str = "services.rs";
+const PARAMETER_IDS_FILE: &str = "parameter_ids.proto";
 const PARAMETER_IDS_PROTO_FILE_RS: &str = "parameter_ids.rs";
+const DESCRIPTORS_FILE: &str = "descriptors.bin";
+
+const PROTO_CONF_FOLDER: &str = "proto_conf";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = env::var("OUT_DIR").expect("no variable called OUT_DIR");
-    let out_dir = PathBuf::from(path);
+    let parameters_proto_path = env::var("PARAMETERS_PROTO_PATH").unwrap_or_else(|_| {
+        panic!("Environment parameter PARAMETERS_PROTO_PATH not set");
+    });
+    
+    if !Path::new(&parameters_proto_path).exists() {
+        panic!("Parameters proto folder not found at: {}", parameters_proto_path);
+    }
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("no variable called OUT_DIR"));
     // let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let proto_path = Path::new(&out_dir);
-    let descriptor_path = proto_path.join("descriptors.bin");
+
+    let generated_proto_path = Path::new(&out_dir);
+    let parameters_proto_flepath = Path::new(&parameters_proto_path).join(PARAMETERS_PROTO_FILE);
+
     println!("cargo:rustc-env=SERVICE_PROTO_FILE_RS={SERVICE_PROTO_FILE_RS}");
     println!("cargo:rustc-env=CONFIGURATION_PROTO_FILE={PARAMETERS_PROTO_FILE}");
     println!("cargo:rustc-env=PARAMETER_IDS_PROTO_FILE_RS={PARAMETER_IDS_PROTO_FILE_RS}");
-    fs::create_dir_all(proto_path)?;
+
+    fs::create_dir_all(generated_proto_path)?;
+
+    let abs_descriptor_path = canonicalize(generated_proto_path.join(DESCRIPTORS_FILE))?;
+    let abs_parameters_path = canonicalize(&parameters_proto_path)?;
+    let abs_proto_conf_path = canonicalize(PROTO_CONF_FOLDER)?;
 
     // Run protoc to generate the descriptor set
-    let status = Command::new("protoc")
-        .arg("--include_imports")
+    let mut cmd = Command::new("protoc");
+    cmd.arg("--include_imports")
         .arg("--descriptor_set_out")
-        .arg(&descriptor_path)
-        .arg("--proto_path=proto_conf")
+        .arg(&abs_descriptor_path)
+        .arg(format!("--proto_path={}", abs_parameters_path.display()))
+        .arg(format!("--proto_path={}", abs_proto_conf_path.display()))
         .arg(PARAMETERS_PROTO_FILE)
-        .arg(OPTIONS_PROTO_FILE)
-        .status()?;
-
+        .arg(OPTIONS_PROTO_FILE);
+    eprintln!("Executing protoc: {:?}", cmd);
+    let status = cmd.status()?;
     if !status.success() {
         return Err("protoc failed to generate descriptors".into());
     }
 
-    println!("cargo:rerun-if-changed={}", PARAMETERS_PROTO_FILE);
+    println!("cargo:rerun-if-changed={}", parameters_proto_flepath.to_string_lossy());
     println!("cargo:rerun-if-changed={}", OPTIONS_PROTO_FILE);
     println!("cargo:rerun-if-changed={}", SERVICE_PROTO_FILE);
 
@@ -54,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //                                  protofile_path.to_str().unwrap().to_owned(),
     //                                  "".to_owned())?;
     let schema = SchemaManager::new(
-        descriptor_path.to_str().unwrap().to_owned(),
+        abs_descriptor_path.into_os_string().into_string().unwrap(),
         Vec::new(),
         PARAMETERS_PROTO_FILE.to_owned(),
     )?;
@@ -80,11 +100,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     prost_build::compile_protos(
         &[
-            format!("proto_conf/{}", SERVICE_PROTO_FILE),
-            format!("proto_conf/{}", PARAMETERS_PROTO_FILE),
-            format!("{}/{}", build_dir.to_str().unwrap(), "parameter_ids.proto"),
+            SERVICE_PROTO_FILE,
+            PARAMETERS_PROTO_FILE,
+            PARAMETER_IDS_FILE,
         ],
-        &["proto_conf/", build_dir.to_str().unwrap()],
+        &[
+            build_dir.to_str().unwrap(), 
+            abs_parameters_path.to_str().unwrap(), 
+            abs_proto_conf_path.to_str().unwrap()
+        ],
     )?;
     // eprintln!("path = {}", out_dir.to_str().unwrap());
     Ok(())
