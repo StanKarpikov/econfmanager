@@ -1,5 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+#[allow(unused_imports)]
+use log::{debug, info, warn, error};
+
 use crate::event_receiver::EventReceiver;
 use crate::notifier::Notifier;
 use crate::{configfile::Config, schema::Parameter};
@@ -37,25 +40,29 @@ pub(crate) struct InterfaceInstance {
 
 impl InterfaceInstance {
     pub(crate) fn new(
-        database_path: String,
-        saved_database_path: String,
+        database_path: &String,
+        saved_database_path: &String,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let config = Config::new(env!("CONFIGURATION_PROTO_FILE").to_string(), database_path, saved_database_path)?;
-        let database = DatabaseManager::new(config)?;
+        let config = Config::new(&env!("CONFIGURATION_PROTO_FILE").to_string(), database_path, saved_database_path)?;
+        let database = DatabaseManager::new(&config)?;
         let runtime_data = Arc::new(Mutex::new(SharedRuntimeData::new()?));
         let notifier = Notifier::new()?;
         let _ = EventReceiver::new(runtime_data.clone())?;
-        Ok(Self{database, notifier, runtime_data, poll_timer_guard:None })
+        info!("Interface created: {} {}", &config.database_path, &config.saved_database_path);
+        Ok(Self{database, notifier, runtime_data, poll_timer_guard:None})
     }
     
     pub(crate) fn get(&self, id: ParameterId, force: bool) -> Result<ParameterValue, Box<dyn std::error::Error>> {
         let index: usize = id as usize;
         let mut data = self.runtime_data.lock().unwrap();
         if !force && data.parameters_data[index].value.is_some() {
-            return Ok(data.parameters_data[index].value.clone().unwrap());
+            let value = data.parameters_data[index].value.clone().unwrap();
+            debug!("Get parameter {}:[{}] from cache: {}", index, PARAMETER_DATA[index].name_id, value);
+            return Ok(value);
         }
         else {
             let value = self.database.read_or_create(id)?;
+            debug!("Get parameter {}:[{}]: {}", index, PARAMETER_DATA[index].name_id, value);
             data.parameters_data[index].value = Some(value.clone());
             Ok(value)
         }
@@ -69,14 +76,18 @@ impl InterfaceInstance {
                 Status::StatusOkChanged(value) | 
                 Status::StatusOkNotChecked(value) |
                 Status::StatusOkOverflowFixed(value) => {
+                    debug!("Set parameter {}:[{}]: {}", index, PARAMETER_DATA[index].name_id, value);
                     self.notifier.notify_of_parameter_change(id)?;
                     value
                 }
-                Status::StatusOkNotChanged(value) => value,
+                Status::StatusOkNotChanged(value) => {
+                    debug!("Parameter {}:[{}] not changed", index, PARAMETER_DATA[index].name_id);
+                    value
+                }
                 Status::StatusErrorNotAccepted(_) => return Err("Parameter not accepted".into()),
                 Status::StatusErrorFailed => return Err("Failed to write the parameter".into()),
             },
-            Err(_) => return Err("Failed to write in the database".into()),
+            Err(e) => return Err(format!("Failed to write in the database: {}", e).into()),
         };
 
         let mut data = self.runtime_data.lock().unwrap();
@@ -89,7 +100,8 @@ impl InterfaceInstance {
     }
 
     pub(crate) fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.database.update()
+        // self.database.update()
+        Ok(())
     }
 
     pub(crate) fn add_callback(&mut self, id: ParameterId, callback: ParameterUpdateCallback) -> Result<(), Box<dyn std::error::Error>> {
@@ -98,6 +110,7 @@ impl InterfaceInstance {
             {
                 let mut data = self.runtime_data.lock().unwrap();
                 data.parameters_data[index].callback = Some(callback);
+                info!("Callback added for ID {}", index);
             }
             Ok(())
         } else {
@@ -111,6 +124,7 @@ impl InterfaceInstance {
             {
                 let mut data = self.runtime_data.lock().unwrap();
                 data.parameters_data[index].callback = None;
+                info!("Callback removed for ID {}", index);
             }
             Ok(())
         } else {

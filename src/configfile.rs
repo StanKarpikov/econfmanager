@@ -37,8 +37,8 @@ fn default_saved_database_path() -> String {
  ******************************************************************************/
 
 impl Config {
-    pub(crate) fn new(proto_name: String, database_path: String, saved_database_path: String) -> Result<Config, Box<dyn std::error::Error>> {
-        Ok(Config{proto_name, database_path, saved_database_path})
+    pub(crate) fn new(proto_name: &String, database_path: &String, saved_database_path: &String) -> Result<Config, Box<dyn std::error::Error>> {
+        Ok(Config{proto_name: proto_name.to_string(), database_path: database_path.to_string(), saved_database_path: saved_database_path.to_string() })
     }
 
     #[allow(unused)]

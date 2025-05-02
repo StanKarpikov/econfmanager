@@ -23,7 +23,8 @@ const PROTO_CONF_FOLDER: &str = "proto_conf";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parameters_proto_path = env::var("PARAMETERS_PROTO_PATH").unwrap_or_else(|_| {
-        panic!("Environment parameter PARAMETERS_PROTO_PATH not set");
+        // panic!("Environment parameter PARAMETERS_PROTO_PATH not set");
+        "examples/peripheral_service/proto".to_owned()
     });
     
     if !Path::new(&parameters_proto_path).exists() {
@@ -309,12 +310,12 @@ fn generate_parameter_functions(
         writeln!(f, "pub type {}_t = {}; \n", pm_name, pm_type)?;
 
         writeln!(f, "#[unsafe(no_mangle)]")?;
-        writeln!(f, "pub extern \"C\" fn get_{}(interface: CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
+        writeln!(f, "pub extern \"C\" fn get_{}(interface: *const CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
         writeln!(f, "    get_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
         writeln!(f, "}}\n")?;
 
         writeln!(f, "#[unsafe(no_mangle)]")?;
-        writeln!(f, "pub extern \"C\" fn set_{}(interface: CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
+        writeln!(f, "pub extern \"C\" fn set_{}(interface: *const CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
         writeln!(f, "    set_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
         writeln!(f, "}}\n")?;
     }

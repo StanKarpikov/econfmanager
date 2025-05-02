@@ -1,6 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::sync::{Arc, Mutex};
 
+use log::{debug, info};
 use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
@@ -40,13 +41,13 @@ impl EventReceiver {
         
         let socket: UdpSocket = socket.into();
         
-        println!("Waiting for multicast messages...");
+        info!("Waiting for multicast messages...");
         let mut buf = [0u8; 1024];
         loop {
             let (num_bytes, src) = socket.recv_from(&mut buf)?;
             let message = std::str::from_utf8(&buf[..num_bytes])
                 .unwrap_or("[non-utf8 data]");
-            println!("Received from {}: {}", src, message);
+            debug!("Received from {}: {}", src, message);
 
             self.notify_callback(ParameterId::DEVICE_DEVICE_NAME);
         }

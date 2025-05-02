@@ -18,9 +18,17 @@ pub mod parameters {
 }
 #[path = "../target/debug/parameter_functions.rs"] pub mod parameter_functions;
 
+use std::io::Write;
+use std::time::Duration;
+use log::error;
 use timer::Timer;
-use std::{ffi::{c_char, CString}, ptr, sync::{Arc, Mutex}};
+use log::LevelFilter;
+use log::info;
+use parking_lot::Mutex;
+use std::{ffi::{c_char, CString}, ptr, sync::Arc};
 use interface::{generated::ParameterId, InterfaceInstance, ParameterUpdateCallback};
+
+const LOCK_TRYING_DURATION: Duration = Duration::from_secs(1);
 
 #[repr(C)]
 pub enum EconfStatus {
@@ -63,7 +71,7 @@ impl CInterfaceInstance {
                 panic!("Null pointer in CInterfaceInstance");
             }
             let arc = &*self.0;  // Immutable borrow of Arc
-            let mut guard = arc.lock().unwrap();  // Lock the Mutex
+            let mut guard = arc.lock();  // Lock the Mutex
             f(&mut guard)
         }
     }
@@ -93,27 +101,50 @@ impl Drop for CInterfaceInstance {
 pub extern "C" fn econf_init(
         database_path: *const std::os::raw::c_char,
         saved_database_path: *const std::os::raw::c_char,
-        interface: *mut CInterfaceInstance
+        interface: *mut *mut CInterfaceInstance
     ) -> EconfStatus {
+    env_logger::Builder::from_default_env()
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} [{}] {}:{} - {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                record.args()
+            )
+        })
+        .filter_level(LevelFilter::Debug)
+        .init();
+
     let database_path = unsafe { std::ffi::CStr::from_ptr(database_path).to_string_lossy().into_owned() };
     let saved_database_path = unsafe { std::ffi::CStr::from_ptr(saved_database_path).to_string_lossy().into_owned() };
 
-    let r_instance = match InterfaceInstance::new(database_path, saved_database_path) {
+    let r_instance = match InterfaceInstance::new(&database_path, &saved_database_path) {
         Ok(value) => value,
         Err(_) => return EconfStatus::StatusError,
     };
 
     let c_instance = CInterfaceInstance::new(r_instance);
 
-    unsafe { *interface = c_instance};
+    unsafe { *interface = Box::into_raw(Box::new(c_instance))};
 
+    info!("Initialisation done: database_path={} saved_database_path={}", database_path, saved_database_path);
     EconfStatus::StatusOk
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_get_name(interface: CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
+pub extern "C" fn econf_get_name(interface: *const CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let interface = lock.lock().unwrap();
+        let interface = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            }
+        };
         let rust_string = interface.get_name(id);
 
         let c_string = match CString::new(rust_string) {
@@ -135,9 +166,16 @@ pub extern "C" fn econf_get_name(interface: CInterfaceInstance, id: ParameterId,
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_add_callback(interface: CInterfaceInstance, id: ParameterId, callback: ParameterUpdateCallback) -> EconfStatus {
+pub extern "C" fn econf_add_callback(interface: *const CInterfaceInstance, id: ParameterId, callback: ParameterUpdateCallback) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let mut interface = lock.lock().unwrap();
+        let mut interface = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            }
+        };
         match interface.add_callback(id, callback) {
             Ok(_) => {
                 EconfStatus::StatusOk
@@ -149,9 +187,16 @@ pub extern "C" fn econf_add_callback(interface: CInterfaceInstance, id: Paramete
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_delete_callback(interface: CInterfaceInstance, id: ParameterId) -> EconfStatus {
+pub extern "C" fn econf_delete_callback(interface: *const CInterfaceInstance, id: ParameterId) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let mut interface = lock.lock().unwrap();
+        let mut interface = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            }
+        };
         match interface.delete_callback(id) {
             Ok(_) => {
                 EconfStatus::StatusOk
@@ -163,9 +208,16 @@ pub extern "C" fn econf_delete_callback(interface: CInterfaceInstance, id: Param
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_update_poll(interface: CInterfaceInstance) -> EconfStatus {
+pub extern "C" fn econf_update_poll(interface: *const CInterfaceInstance) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let mut interface = lock.lock().unwrap();
+        let mut interface = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            }
+        };
         match interface.update() {
             Ok(_) => {
                 EconfStatus::StatusOk
@@ -177,15 +229,22 @@ pub extern "C" fn econf_update_poll(interface: CInterfaceInstance) -> EconfStatu
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_set_up_timer_poll(interface: CInterfaceInstance, timer_period_ms: i64) -> EconfStatus {
+pub extern "C" fn econf_set_up_timer_poll(interface: *const CInterfaceInstance, timer_period_ms: i64) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let mut interface_guard = lock.lock().unwrap();
+        let mut interface_guard = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            }
+        };
 
         let timer = Timer::new();
         
         let arc_clone = (unsafe { &*interface.0 }).clone();
         interface_guard.poll_timer_guard = Some(timer.schedule_repeating(chrono::Duration::milliseconds(timer_period_ms), move || {
-            let mut interface = arc_clone.lock().unwrap();
+            let mut interface = arc_clone.lock();
             let _ = interface.update();
         }));
 
@@ -195,19 +254,37 @@ pub extern "C" fn econf_set_up_timer_poll(interface: CInterfaceInstance, timer_p
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_stop_timer_poll(interface: CInterfaceInstance) -> EconfStatus {
+pub extern "C" fn econf_stop_timer_poll(interface: *const CInterfaceInstance) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let mut interface = lock.lock().unwrap();
-        drop(interface.poll_timer_guard.clone().unwrap());
-        interface.poll_timer_guard = None;
-    });
-    EconfStatus::StatusOk
+        let mut interface_guard = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            },
+        };
+        
+        // Take ownership of the timer guard and drop it
+        if let Some(timer_guard) = interface_guard.poll_timer_guard.take() {
+            drop(timer_guard);
+        }
+        
+        EconfStatus::StatusOk
+    })
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_load(interface: CInterfaceInstance) -> EconfStatus {
+pub extern "C" fn econf_load(interface: *const CInterfaceInstance) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let mut interface = lock.lock().unwrap();
+        let mut interface = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            }
+        };
         match interface.load() {
             Ok(_) => {
                 EconfStatus::StatusOk
@@ -219,9 +296,16 @@ pub extern "C" fn econf_load(interface: CInterfaceInstance) -> EconfStatus {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_save(interface: CInterfaceInstance) -> EconfStatus {
+pub extern "C" fn econf_save(interface: *const CInterfaceInstance) -> EconfStatus {
+    let interface = unsafe { &*interface };
     interface.with_lock(|lock| {
-        let mut interface = lock.lock().unwrap();
+        let mut interface = match lock.try_lock_for(LOCK_TRYING_DURATION) {
+            Some(guard) => guard,
+            None => {
+                error!("Failed to acquire lock within timeout");
+                return EconfStatus::StatusError;
+            }
+        };
         match interface.save() {
             Ok(_) => {
                 EconfStatus::StatusOk

@@ -1,8 +1,13 @@
-use std::{error::Error, fs, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::{error::Error, fmt, fs, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use rusqlite::{backup::Backup, params, Connection, OpenFlags, ToSql};
 use std::time::Duration;
 
+#[allow(unused_imports)]
+use log::{debug, info, warn, error};
+
 use crate::{configfile::Config, interface::generated::{ParameterId, PARAMETER_DATA}, schema::ParameterValue};
+
+const TABLE_NAME: &str = "parameters";
 
 pub(crate) struct DatabaseManager {
     database_path: String,
@@ -26,7 +31,7 @@ impl DbConnection {
             OpenFlags::SQLITE_OPEN_READ_ONLY
         };
 
-        let conn = match Connection::open_with_flags(&database_path, flags) {
+        let mut conn = match Connection::open_with_flags(&database_path, flags) {
             Ok(conn) => {
                 let _ = conn.busy_timeout(std::time::Duration::from_millis(300));
                 conn
@@ -35,6 +40,7 @@ impl DbConnection {
                 return Err(format!("Failed to open connection: {}", e).into());
             }
         };
+        debug!("> DB connection opened with flags {:?}", flags);
 
         if create_required {
             conn.pragma_update(None, "locking_mode", "NORMAL")?;
@@ -44,6 +50,20 @@ impl DbConnection {
             conn.pragma_update(None, "wal_autocheckpoint", "1000")?;  // Pages
             conn.pragma_update(None, "synchronous", "NORMAL")?;
             conn.pragma_update(None, "busy_timeout", "10000")?;  // 10 second timeout
+
+            let sql = format!(
+                "CREATE TABLE IF NOT EXISTS {} (
+                    key INTEGER UNIQUE PRIMARY KEY,
+                    value REAL,
+                    timestamp REAL
+                ) WITHOUT ROWID;",
+                TABLE_NAME
+            );
+            let tx = conn.transaction()?;
+            tx.execute_batch(&sql)?;
+            tx.commit()?;
+
+            info!("Parameters database created");
         }
 
         Ok(Self{conn: Some(conn) })
@@ -62,6 +82,10 @@ impl Drop for DbConnection {
     fn drop(&mut self) {
         if let Some(conn) = self.conn.take() {
             let _ = conn.close();
+            debug!("< DB connection closed");
+        }
+        else {
+            warn!("< Drop was called, but DB connection not closed");
         }
     }
 }
@@ -76,6 +100,19 @@ pub enum Status<T> {
     StatusOkOverflowFixed(T),
     StatusErrorNotAccepted(T),
     StatusErrorFailed,
+}
+
+impl<T: fmt::Display> fmt::Display for Status<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Status::StatusOkChanged(value) => write!(f, "OK (changed): {}", value),
+            Status::StatusOkNotChanged(value) => write!(f, "OK (not changed): {}", value),
+            Status::StatusOkNotChecked(value) => write!(f, "OK (not checked): {}", value),
+            Status::StatusOkOverflowFixed(value) => write!(f, "OK (overflow fixed): {}", value),
+            Status::StatusErrorNotAccepted(value) => write!(f, "Error (not accepted): {}", value),
+            Status::StatusErrorFailed => write!(f, "Error (operation failed)"),
+        }
+    }
 }
 
 impl DatabaseManager {
@@ -110,33 +147,42 @@ impl DatabaseManager {
      ******************************************************************************/
 
     pub(crate) fn load_database(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Loading database");
         Self::copy_database(Path::new(&self.saved_database_path), Path::new(&self.database_path))
     }
 
     pub(crate) fn save_database(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Saving database");
         Self::copy_database(Path::new(&self.database_path), Path::new(&self.saved_database_path))
     }
 
-    pub(crate) fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn new(config: &Config) -> Result<Self, Box<dyn std::error::Error>> {
         let database_manager = Self { 
-            database_path: config.database_path, 
-            saved_database_path: config.saved_database_path,
+            database_path: config.database_path.clone(), 
+            saved_database_path: config.saved_database_path.clone(),
             last_update_timestamp: 0.0 
         };
 
         match fs::metadata(&database_manager.database_path) {
-            Ok(metadata) if metadata.is_file() => {}
+            Ok(metadata) if metadata.is_file() => {
+                info!("Database exists, continue");
+            }
             Ok(_) => {
-                return Err("Database file exists but is not a file".into())
+                error!("Database file {} exists but is not a file", database_manager.database_path);
+                return Err(format!("Database file {} exists but is not a file", database_manager.database_path).into())
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                println!("Database doesn't exist");
+                info!("Database doesn't exist, load");
                 database_manager.load_database()?;
             }
-            Err(e) => return Err(format!("Error checking database file: {}", e).into()),
+            Err(e) => {
+                error!("Error checking database file {}: {}", database_manager.database_path, e);
+                return Err(format!("Error checking database file {}: {}", database_manager.database_path, e).into())
+            },
         }
 
-        DbConnection::new(&database_manager.database_path, true, false)?;
+        DbConnection::new(&database_manager.database_path, true, true)?;
+        info!("Database manager initialised");
         Ok(database_manager)
     }
 
@@ -275,10 +321,11 @@ impl DatabaseManager {
     pub(crate) fn read_or_create(&self, id: ParameterId) -> Result<ParameterValue, Box<dyn Error>> {
         let db = DbConnection::new(&self.database_path, false, false)?;
         
-        let sql = "SELECT value FROM configuration WHERE key = ?";
-        let mut stmt = match db.conn().prepare(sql) {
+        let sql = format!("SELECT value FROM {} WHERE key = ?", TABLE_NAME);
+        let mut stmt = match db.conn().prepare(&sql) {
             Ok(s) => s,
             Err(e) => {
+                error!("Failed to prepare statement: {}", e);
                 return Err(format!("Failed to prepare statement: {}", e).into());
             }
         };
@@ -304,13 +351,14 @@ impl DatabaseManager {
             match value_result {
                 Ok(value) => Ok(value),
                 Err(_) => {
-                    println!("Type mismatch for [{}], using default", key);
+                    warn!("Type mismatch for [{}], using default", key);
                     Ok(parameter_def.value.clone())
                 }
             }
         }) {
             Ok(val) => Ok(val),
-            Err(_) => {
+            Err(e) => {
+                error!("Error reading parameter: {}", e);
                 Ok(parameter_def.value.clone())
             }
         };
@@ -328,17 +376,19 @@ impl DatabaseManager {
         
         // Check if values are equal (unless forced)
         if !force {
-            let current = self.read_or_create(id).unwrap();
-            if current == value {
-                return Ok(Status::StatusOkNotChanged(value));
-            }
+            match self.read_or_create(id){
+                Ok(current ) => if current == value {
+                    return Ok(Status::StatusOkNotChanged(value));
+                }
+                Err(e) => error!("Error reading current value: {}", e)
+            };
         }
         
         let db = DbConnection::new(&self.database_path, true, false)?;
         
-        let sql = "INSERT OR REPLACE INTO configuration (key, value, timestamp) VALUES (?,?,?);";
+        let sql = format!("INSERT OR REPLACE INTO {} (key, value, timestamp) VALUES (?,?,?);", TABLE_NAME);
         
-        let mut stmt = db.conn.as_ref().unwrap().prepare(sql)?;
+        let mut stmt = db.conn.as_ref().unwrap().prepare(&sql)?;
         
         // Bind parameters
         let parameter_def = &PARAMETER_DATA[id as usize];
@@ -363,14 +413,14 @@ impl DatabaseManager {
     }
     
     pub fn update(&mut self) -> Result<(), Box<dyn Error>> {
-        let sql = "SELECT key FROM configuration WHERE timestamp >= ?";
+        let sql = format!("SELECT key FROM {} WHERE timestamp >= ?", TABLE_NAME);
         let check_start = Self::get_timestamp();
         let mut pending_callbacks: Vec<ParameterId> = Vec::new();
 
         let db = DbConnection::new(&self.database_path, false, false)?;
 
         let conn = db.conn.as_ref().ok_or("Database not open")?;
-        let mut stmt = conn.prepare(sql)?;
+        let mut stmt = conn.prepare(&sql)?;
         let mut rows = stmt.query(params![self.last_update_timestamp])?;
 
         while let Some(row) = rows.next()? {

@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, fmt};
 use prost_reflect::{DescriptorPool, DynamicMessage, FileDescriptor, MessageDescriptor, ReflectMessage, Value};
 
 
@@ -23,6 +23,32 @@ pub enum ParameterValue {
     ValF64(f64),
     ValString(String),
     ValBlob(Vec<u8>),
+}
+
+impl fmt::Display for ParameterValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParameterValue::ValBool(v) => write!(f, "Bool: {}", v),
+            ParameterValue::ValI32(v) => write!(f, "I32: {}", v),
+            ParameterValue::ValU32(v) => write!(f, "U32: {}", v),
+            ParameterValue::ValI64(v) => write!(f, "I64: {}", v),
+            ParameterValue::ValU64(v) => write!(f, "U64: {}", v),
+            ParameterValue::ValF32(v) => write!(f, "F32: {:+.4e}", v),
+            ParameterValue::ValF64(v) => write!(f, "F64: {:+.4e}", v),
+            ParameterValue::ValString(v) => write!(f, "String: {}", v),
+            ParameterValue::ValBlob(v) => {
+                let display_len = std::cmp::min(8, v.len());
+                write!(f, "[")?;
+                for byte in &v[..display_len] {
+                    write!(f, "{:02X} ", byte)?;
+                }
+                if v.len() > display_len {
+                    write!(f, "... ({} bytes)", v.len())?;
+                }
+                write!(f, "]")
+            }
+        }
+    }
 }
 
 #[allow(unused)]

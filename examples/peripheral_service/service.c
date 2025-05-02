@@ -6,7 +6,7 @@
 int main(int argc, char *argv[]) {
     EconfStatus status;
     
-    CInterfaceInstance interface = {0};
+    CInterfaceInstance* interface = {0};
     status = econf_init(
         "parameters.db",
         "saved_parameters.db",
@@ -26,10 +26,13 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to get serial number\n");
     }
 
-    device_serial_number_t new_serial = 12345;
+    device_serial_number_t new_serial = serial_number+1;
     status = set_device_serial_number(interface, &new_serial);
     if (status != StatusOk) {
         fprintf(stderr, "Failed to set serial number\n");
+    }
+    else {
+        fprintf(stderr, "Set okay\n");
     }
 
     return EXIT_SUCCESS;
