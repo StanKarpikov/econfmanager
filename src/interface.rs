@@ -100,8 +100,7 @@ impl InterfaceInstance {
     }
 
     pub(crate) fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // self.database.update()
-        Ok(())
+        self.database.update()
     }
 
     pub(crate) fn add_callback(&mut self, id: ParameterId, callback: ParameterUpdateCallback) -> Result<(), Box<dyn std::error::Error>> {
