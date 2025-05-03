@@ -5,7 +5,7 @@ use log::{debug, info};
 use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
-use crate::interface::generated::ParameterId;
+use crate::generated::ParameterId;
 
 use crate::interface::SharedRuntimeData;
 

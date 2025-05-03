@@ -23,8 +23,8 @@ const PROTO_CONF_FOLDER: &str = "proto_conf";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parameters_proto_path = env::var("PARAMETERS_PROTO_PATH").unwrap_or_else(|_| {
-        // panic!("Environment parameter PARAMETERS_PROTO_PATH not set");
-        "examples/peripheral_service/proto".to_owned()
+        eprintln!("Environment parameter PARAMETERS_PROTO_PATH not set, using default EXAMPLES path");
+        "../examples/peripheral_service/proto".to_owned()
     });
     
     if !Path::new(&parameters_proto_path).exists() {
@@ -76,6 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ancestors()
         .nth(3) // OUT_DIR is like target/debug/build/crate-hash/out
         .expect("Failed to find build directory");
+    println!("cargo:rustc-env=GENERATED_FILES_DIR={}", build_dir.to_str().unwrap().to_owned());
 
     let schema = SchemaManager::new(
         abs_descriptor_path.into_os_string().into_string().unwrap(),
@@ -199,11 +200,10 @@ fn generate_parameter_enum(
     let dest_path = Path::new(&build_dir).join("generated.rs");
     let mut f = File::create(dest_path)?;
 
-    writeln!(f, "use super::*;")?;
     writeln!(f, "use num_enum::TryFromPrimitive;")?;
     writeln!(
         f,
-        "use crate::schema::{{ParameterValue, ValidationMethod}};"
+        "use crate::schema::{{Parameter, ParameterValue, ValidationMethod}};"
     )?;
     writeln!(f, "/// Auto‐generated. See build.rs")?;
 
@@ -289,7 +289,7 @@ fn generate_parameter_functions(
 
     writeln!(f, "/// Auto‐generated. See build.rs\n")?;
     
-    writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, set_parameter}}, interface::generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
+    writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, set_parameter}}, generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
     
     for p in parameters {
         let pm_enum_name = get_parameter_name_for_enum(&p.name_id.to_string());

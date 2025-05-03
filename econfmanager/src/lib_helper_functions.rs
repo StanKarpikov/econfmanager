@@ -2,7 +2,7 @@ use std::{any::type_name, time::Duration};
 
 use log::{debug, error};
 
-use crate::{interface::generated::ParameterId, schema::ParameterType, CInterfaceInstance, EconfStatus, InterfaceInstance};
+use crate::{generated::ParameterId, schema::ParameterType, CInterfaceInstance, EconfStatus, InterfaceInstance};
 
 const LOCK_TRYING_DURATION: Duration = Duration::from_secs(1);
 

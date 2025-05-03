@@ -1,9 +1,10 @@
 use std::net::UdpSocket;
 use prost::Message;
-use crate::interface::generated::ParameterId;
+use crate::generated::ParameterId;
 use crate::services::ParameterNotification;
 use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
 
+#[derive(Default)]
 pub(crate) struct Notifier {
 
 }

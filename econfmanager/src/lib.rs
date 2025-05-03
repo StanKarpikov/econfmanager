@@ -1,9 +1,8 @@
 pub mod schema;
+pub mod config;
 pub mod notifier;
-pub mod arguments;
 pub mod interface;
 pub mod constants;
-pub mod configfile;
 pub mod database_utils;
 pub mod event_receiver;
 pub mod lib_helper_functions;
@@ -16,7 +15,12 @@ pub mod parameter_ids {
 pub mod parameters {
     include!(concat!(env!("OUT_DIR"), "/parameters.rs"));
 }
-#[path = "../target/debug/parameter_functions.rs"] pub mod parameter_functions;
+pub mod parameter_functions {
+    include!(concat!(env!("GENERATED_FILES_DIR"), "/parameter_functions.rs"));
+}
+pub mod generated {
+    include!(concat!(env!("GENERATED_FILES_DIR"), "/generated.rs"));
+}
 
 use std::io::Write;
 use std::time::Duration;
@@ -27,7 +31,8 @@ use log::LevelFilter;
 use log::info;
 use parking_lot::Mutex;
 use std::{ffi::{c_char, CString}, ptr, sync::Arc};
-use interface::{generated::ParameterId, InterfaceInstance, ParameterUpdateCallback};
+use interface::{InterfaceInstance, ParameterUpdateCallback};
+use generated::ParameterId;
 
 const LOCK_TRYING_DURATION: Duration = Duration::from_secs(1);
 

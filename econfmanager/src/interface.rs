@@ -3,23 +3,25 @@ use std::sync::{Arc, Mutex};
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
+use crate::config::Config;
 use crate::event_receiver::EventReceiver;
+use crate::generated;
 use crate::notifier::Notifier;
-use crate::{configfile::Config, schema::Parameter};
 use crate::database_utils::{DatabaseManager, Status};
 use crate::schema::ParameterValue;
 
-#[path = "../target/debug/generated.rs"] pub mod generated;
 use generated::{ParameterId, PARAMETERS_NUM, PARAMETER_DATA};
 use timer::Guard;
 
 pub type ParameterUpdateCallback = extern fn(id: ParameterId);
 
+#[derive(Default)]
 pub(crate) struct RuntimeParametersData {
     pub(crate) value: Option<ParameterValue>,
     pub(crate) callback: Option<ParameterUpdateCallback>
 }
 
+#[derive(Default)]
 pub(crate) struct SharedRuntimeData {
     pub(crate) parameters_data: [RuntimeParametersData; PARAMETERS_NUM],
 }
@@ -31,7 +33,8 @@ impl SharedRuntimeData{
     }
 }
 
-pub(crate) struct InterfaceInstance {
+#[derive(Default)]
+pub struct InterfaceInstance {
     database: DatabaseManager,
     notifier: Notifier,
     runtime_data: Arc<Mutex<SharedRuntimeData>>,
@@ -39,7 +42,7 @@ pub(crate) struct InterfaceInstance {
 }
 
 impl InterfaceInstance {
-    pub(crate) fn new(
+    pub fn new(
         database_path: &String,
         saved_database_path: &String,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -52,7 +55,7 @@ impl InterfaceInstance {
         Ok(Self{database, notifier, runtime_data, poll_timer_guard:None})
     }
     
-    pub(crate) fn get(&self, id: ParameterId, force: bool) -> Result<ParameterValue, Box<dyn std::error::Error>> {
+    pub fn get(&self, id: ParameterId, force: bool) -> Result<ParameterValue, Box<dyn std::error::Error>> {
         let index: usize = id as usize;
         let mut data = self.runtime_data.lock().unwrap();
         if !force && data.parameters_data[index].value.is_some() {
@@ -68,7 +71,7 @@ impl InterfaceInstance {
         }
     }
     
-    pub(crate) fn set(&self, id: ParameterId, parameter: ParameterValue) -> Result<ParameterValue, Box<dyn std::error::Error>> {
+    pub fn set(&self, id: ParameterId, parameter: ParameterValue) -> Result<ParameterValue, Box<dyn std::error::Error>> {
         let index: usize = id as usize;
         let result = self.database.write(id, parameter, false);
         let value = match result {
@@ -95,15 +98,15 @@ impl InterfaceInstance {
         Ok(value)
     }
     
-    pub(crate) fn get_name(&self, id: ParameterId) -> String {
+    pub fn get_name(&self, id: ParameterId) -> String {
         PARAMETER_DATA[id as usize].name_id.to_owned()
     }
 
-    pub(crate) fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.database.update()
     }
 
-    pub(crate) fn add_callback(&mut self, id: ParameterId, callback: ParameterUpdateCallback) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn add_callback(&mut self, id: ParameterId, callback: ParameterUpdateCallback) -> Result<(), Box<dyn std::error::Error>> {
         let index = id as usize;
         if index < PARAMETERS_NUM {
             {
@@ -117,7 +120,7 @@ impl InterfaceInstance {
         }
     }
 
-    pub(crate) fn delete_callback(&mut self, id: ParameterId) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn delete_callback(&mut self, id: ParameterId) -> Result<(), Box<dyn std::error::Error>> {
         let index = id as usize;
         if index < PARAMETERS_NUM {
             {
@@ -131,11 +134,11 @@ impl InterfaceInstance {
         }
     }
 
-    pub(crate) fn load(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.database.load_database()
     }
 
-    pub(crate) fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.database.save_database()
     }
 

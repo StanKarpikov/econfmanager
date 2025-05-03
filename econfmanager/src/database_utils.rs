@@ -5,10 +5,11 @@ use std::time::Duration;
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use crate::{configfile::Config, interface::generated::{ParameterId, PARAMETER_DATA}, schema::ParameterValue};
+use crate::{config::Config, generated::{ParameterId, PARAMETER_DATA}, schema::ParameterValue};
 
 const TABLE_NAME: &str = "parameters";
 
+#[derive(Default)]
 pub(crate) struct DatabaseManager {
     database_path: String,
     saved_database_path: String,
