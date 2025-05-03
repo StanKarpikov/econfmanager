@@ -86,11 +86,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|op|{panic!("Error creating schema: {}", op)});
     let parameters = schema.get_parameters()
         .unwrap_or_else(|op|{panic!("Error getting parameters list: {}", op)});
-    generate_parameter_enum(&parameters, build_dir.to_str().unwrap().to_owned())
-        .unwrap_or_else(|op|{panic!("Error generating parameters enum: {}", op)});
-
     generate_parameter_ids(&parameters, build_dir.to_str().unwrap().to_owned())
         .unwrap_or_else(|op|{panic!("Error generating parameters ids: {}", op)});
+
+    generate_parameter_enum(&parameters, build_dir.to_str().unwrap().to_owned())
+        .unwrap_or_else(|op|{panic!("Error generating parameters enum: {}", op)});
 
     generate_parameter_functions(&parameters, build_dir.to_str().unwrap().to_owned())
         .unwrap_or_else(|op|{panic!("Error generating parameters functions: {}", op)});

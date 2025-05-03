@@ -102,6 +102,18 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].name_id.to_owned()
     }
 
+    pub fn get_parameter_names(&self) -> Vec<String> {
+        PARAMETER_DATA.iter().map(|parameter| parameter.name_id.to_string()).collect()
+    }
+
+    pub fn get_parameter_id_from_name(&self, name: String) -> Option<ParameterId> {
+        PARAMETER_DATA
+            .iter()
+            .enumerate()
+            .find(|(_, parameter)| parameter.name_id.to_string() == name)
+            .and_then(|(id, _)| ParameterId::try_from(id).ok())
+    }
+
     pub fn update(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.database.update()
     }

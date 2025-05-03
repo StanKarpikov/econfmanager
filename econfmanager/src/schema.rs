@@ -1,10 +1,6 @@
 use std::{error::Error, fmt};
 use prost_reflect::{DescriptorPool, DynamicMessage, FileDescriptor, MessageDescriptor, ReflectMessage, Value};
-
-
-// use crate::configfile::Config;
-// use crate::database_utils::DatabaseManager;
-
+use serde::ser::{Serialize, Serializer, SerializeStruct};
 
 pub(crate) struct SchemaManager {
     config_descriptor: MessageDescriptor,
@@ -24,6 +20,27 @@ pub enum ParameterValue {
     ValString(String),
     ValBlob(Vec<u8>),
 }
+
+
+impl Serialize for ParameterValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ParameterValue::ValBool(v) => v.serialize(serializer),
+            ParameterValue::ValI32(v) => v.serialize(serializer),
+            ParameterValue::ValU32(v) => v.serialize(serializer),
+            ParameterValue::ValI64(v) => v.serialize(serializer),
+            ParameterValue::ValU64(v) => v.serialize(serializer),
+            ParameterValue::ValF32(v) => v.serialize(serializer),
+            ParameterValue::ValF64(v) => v.serialize(serializer),
+            ParameterValue::ValString(v) => v.serialize(serializer),
+            ParameterValue::ValBlob(v) => v.serialize(serializer),
+        }
+    }
+}
+
 
 impl fmt::Display for ParameterValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

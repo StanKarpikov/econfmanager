@@ -1,37 +1,42 @@
-use econfmanager::interface::InterfaceInstance;
+use arguments::Args;
+use clap::Parser;
+use configfile::Config;
+use econfmanager::{interface::InterfaceInstance, schema::ParameterValue};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::{Arc, Mutex};
 use warp::{Filter, Rejection, Reply, ws::{Message, WebSocket}};
-use serde::{Deserialize, Serialize};
 use futures::{SinkExt, StreamExt};
 
-#[derive(Serialize, Deserialize, Clone)]
-struct Parameter {
-    name: String,
-    value: serde_json::Value,
-}
+pub mod arguments;
+pub mod configfile;
+
 
 #[derive(Default)]
 struct AppState {
-    string_param: String,
-    int_param: i32,
     subscribers: Vec<tokio::sync::mpsc::UnboundedSender<String>>,
     interface: InterfaceInstance,
+    names: Vec<String>,
 }
 
 type SharedState = Arc<Mutex<AppState>>;
 
 #[tokio::main]
 async fn main() {
-
-    let database_path = "".to_string();
-    let saved_database_path = "".to_string();
+    let args = Args::parse();
+    let config = Config::from_file(args.config);
 
     let state = Arc::new(Mutex::new(AppState {
-        string_param: "Hello".into(),
-        int_param: 42,
         subscribers: Vec::new(),
-        interface: InterfaceInstance::new(&database_path, &saved_database_path).unwrap(),
+        interface: InterfaceInstance::new(&config.database_path, &config.saved_database_path).unwrap(),
+        names: Vec::new(),
     }));
+
+    // Cache static parameters
+    {
+        let mut app = state.lock().unwrap();
+        app.names = app.interface.get_parameter_names();
+    }
 
     let state_filter = warp::any().map(move || state.clone());
 
@@ -67,37 +72,69 @@ struct RpcResponse {
     result: serde_json::Value,
 }
 
+fn reply_error(error: &str) -> Value {
+    serde_json::json!({"error": error})
+}
+
 async fn handle_rpc(req: RpcRequest, state: SharedState) -> Result<impl Reply, Rejection> {
     let mut app = state.lock().unwrap();
     let result = match req.method.as_str() {
         "read" => {
             let name = req.params.as_ref().and_then(|p| p.get("name")).and_then(|v| v.as_str()).unwrap_or("");
-            match name {
-                "int_param" => serde_json::json!({"name": "int_param", "value": app.int_param}),
-                "string_param" => serde_json::json!({"name": "string_param", "value": app.string_param}),
-                _ => serde_json::json!({"error": "Unknown parameter"}),
+            if app.names.contains(&name.to_string()) {
+                let parameter_id = app.interface.get_parameter_id_from_name(name.to_owned());
+                match parameter_id {
+                    Some(parameter_id) => {
+                        let value = app.interface.get(parameter_id, false);
+                        match value {
+                            Ok(value) => serde_json::json!({"pm": {name: value}}),
+                            Err(_) => reply_error("Internal error"),
+                        }
+                    },
+                    _ => reply_error("Internal error"),
+                }
+            }
+            else {
+                reply_error("Unknown parameter")
             }
         }
         "write" => {
             if let Some(params) = req.params.as_ref() {
                 let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                if name == "int_param" {
-                    if let Some(value) = params.get("value").and_then(|v| v.as_i64()) {
-                        app.int_param = value as i32;
-
-                        let notification = serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "method": "notify",
-                            "params": {
-                                "name": "int_param",
-                                "value": app.int_param
-                            }
-                        })
-                        .to_string();
-
-                        app.subscribers.retain(|tx| tx.send(notification.clone()).is_ok());
+                if app.names.contains(&name.to_string()) {
+                    let parameter_id = app.interface.get_parameter_id_from_name(name.to_owned());
+                    match parameter_id {
+                        Some(parameter_id) => {
+                            // let parameter= ;
+                            // let value = app.interface.set(parameter_id, parameter);
+                            // match value {
+                            //     Ok(value) => serde_json::json!({"pm": {name: value}}),
+                            //     Err(_) => reply_error("Internal error"),
+                            // }
+                        },
+                        _ => reply_error("Internal error"),
                     }
                 }
+                else {
+                    reply_error("Unknown parameter")
+                }
+                // if name == "int_param" {
+                //     if let Some(value) = params.get("value").and_then(|v| v.as_i64()) {
+                //         app.int_param = value as i32;
+
+                //         let notification = serde_json::json!({
+                //             "jsonrpc": "2.0",
+                //             "method": "notify",
+                //             "params": {
+                //                 "name": "int_param",
+                //                 "value": app.int_param
+                //             }
+                //         })
+                //         .to_string();
+
+                //         app.subscribers.retain(|tx| tx.send(notification.clone()).is_ok());
+                //     }
+                // }
             }
             serde_json::json!({"status": "ok"})
         }

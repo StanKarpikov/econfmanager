@@ -7,7 +7,6 @@ use clap::Parser;
     author = clap::crate_authors!(),
     about = clap::crate_description!()
 )]
-
 pub(crate) struct Args {
     #[arg(short, long, default_value = "config.json")]
     pub config: String,
