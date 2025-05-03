@@ -49,40 +49,39 @@ impl CInterfaceInstance {
         CInterfaceInstance(Box::into_raw(boxed_arc))
     }
     
-    pub(crate) fn with_lock<F, R>(&self, f: F) -> R
+    pub(crate) fn with_lock<F, R>(&self, f: F) -> Result<R, Box<dyn std::error::Error>>
     where
         F: FnOnce(&Mutex<InterfaceInstance>) -> R,
     {
-        unsafe {
-            if self.0.is_null() {
-                panic!("Null pointer in CInterfaceInstance");
-            }
-            let arc = &*self.0;
-            f(&arc)
+        if self.0.is_null() {
+            error!("Null pointer in CInterfaceInstance");
+            return Err("Null pointer in CInterfaceInstance".into());
         }
+        let arc = unsafe {&*self.0};
+        Ok(f(&arc))
     }
     
     #[allow(unused)]
-    pub(crate) fn with_lock_mut<F, R>(&self, f: F) -> R
+    pub(crate) fn with_lock_mut<F, R>(&self, f: F) -> Result<R, Box<dyn std::error::Error>>
     where
         F: FnOnce(&mut InterfaceInstance) -> R,
     {
-        unsafe {
-            if self.0.is_null() {
-                panic!("Null pointer in CInterfaceInstance");
-            }
-            let arc = &*self.0;  // Immutable borrow of Arc
-            let mut guard = arc.lock();  // Lock the Mutex
-            f(&mut guard)
+        if self.0.is_null() {
+            error!("Null pointer in CInterfaceInstance");
+            return Err("Null pointer in CInterfaceInstance".into());
         }
+        let arc = unsafe {&*self.0};  // Immutable borrow of Arc
+        let mut guard = arc.lock();  // Lock the Mutex
+        Ok(f(&mut guard))
     }
     
     #[allow(unused)]
-    pub(crate) fn get_arc(&self) -> Arc<Mutex<InterfaceInstance>> {
+    pub(crate) fn get_arc(&self) -> Result<Arc<Mutex<InterfaceInstance>>, Box<dyn std::error::Error>> {
         if self.0.is_null() {
-            panic!("Null pointer in CInterfaceInstance");
+            error!("Null pointer in CInterfaceInstance");
+            return Err("Null pointer in CInterfaceInstance".into());
         }
-        unsafe { (*self.0).clone() }
+        Ok(unsafe { (*self.0).clone() })
     }
 }
 
@@ -179,7 +178,10 @@ pub extern "C" fn econf_update_poll(interface: *const CInterfaceInstance) -> Eco
 
 #[unsafe(no_mangle)]
 pub extern "C" fn econf_set_up_timer_poll(interface: *const CInterfaceInstance, timer_period_ms: i64) -> EconfStatus {
-    let arc_interface = unsafe { &*interface }.get_arc();
+    let arc_interface = match unsafe { &*interface }.get_arc(){
+        Ok(value) => value,
+        Err(_) => return EconfStatus::StatusError
+    };
     interface_execute(interface, |interface_guard| {
         let timer = Timer::new();
         interface_guard.poll_timer_guard = Some(timer.schedule_repeating(

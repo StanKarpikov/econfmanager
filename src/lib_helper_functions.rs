@@ -29,7 +29,7 @@ where
     validate_ptr!(interface, CInterfaceInstance);
     
     let interface = unsafe { &*interface };
-    interface.with_lock(|lock| {
+    match interface.with_lock(|lock| {
         lock.try_lock_for(LOCK_TRYING_DURATION)
             .map(|mut guard| f(&mut *guard))
             .unwrap_or_else(|| {
@@ -41,7 +41,10 @@ where
                 error!("Operation failed: {}", e);
                 EconfStatus::StatusError
             })
-    })
+    }){
+        Ok(status) => status,
+        Err(_) => EconfStatus::StatusError,
+    }
 }
 
 pub(crate) fn get_parameter<T: ParameterType>(
