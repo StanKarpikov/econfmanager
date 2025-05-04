@@ -2,19 +2,209 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>JSON-RPC Demo</title>
+    <title>Device Configuration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #444;
+        }
+        .param-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: inline-block;
+            width: 200px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        input[type="number"], input[type="text"] {
+            padding: 5px;
+            width: 200px;
+        }
+        .comment {
+            color: #666;
+            font-style: italic;
+            margin-left: 210px;
+            margin-top: 5px;
+            font-size: 0.9em;
+        }
+        
+        /* Connection status panel */
+        #connection-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 250px;
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #connection-status {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        #status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            background: #ccc;
+        }
+        #status-indicator.connected {
+            background: #4CAF50;
+            box-shadow: 0 0 5px #4CAF50;
+        }
+        #status-indicator.disconnected {
+            background: #f44336;
+        }
+        #status-indicator.connecting {
+            background: #FFC107;
+            animation: pulse 1.5s infinite;
+        }
+        #connection-events {
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 0.8em;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        .event {
+            margin-bottom: 5px;
+            padding-bottom: 5px;
+            border-bottom: 1px dashed #eee;
+        }
+        .event-time {
+            color: #666;
+            font-size: 0.8em;
+            margin-right: 5px;
+        }
+        .event-message {
+            word-break: break-word;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
 </head>
 <body>
-    <h1>Parameters</h1>
-    <div>
-        <label>String Param:</label>
-        <span id="string_param">...</span>
-    </div>
-    <div>
-        <label>Int Param:</label>
-        <input type="number" id="int_param_input" />
+    <div id="connection-panel">
+        <div id="connection-status">
+            <div id="status-indicator"></div>
+            <span id="status-text">Disconnected</span>
+        </div>
+        <div id="connection-stats">
+            <div>Attempts: <span id="attempt-count">0</span>/<span id="max-attempts">10</span></div>
+        </div>
+        <div id="connection-events"></div>
     </div>
 
+    <h1>Device Configuration</h1>
+
+    <div class="section">
+        <h2>Image Acquisition</h2>
+        
+        <div class="param-group">
+            <label for="image_width">Image Width:</label>
+            <input type="number" id="image_width" min="256" max="2048" value="256" />
+            <div class="comment">The width of the processed image (range: 256-2048)</div>
+        </div>
+        
+        <div class="param-group">
+            <label for="image_height">Image Height:</label>
+            <input type="number" id="image_height" min="256" max="2048" value="256" />
+            <div class="comment">The height of the processed image (range: 256-2048)</div>
+        </div>
+        
+        <div class="param-group">
+            <label for="exposure">Exposure:</label>
+            <input type="number" id="exposure" min="0.1" max="12.0" step="0.1" value="1.0" />
+            <div class="comment">Exposure time (range: 0.1-12.0)</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Device Information</h2>
+        
+        <div class="param-group">
+            <label for="device_name">Device Name:</label>
+            <input type="text" id="device_name" value="device" />
+        </div>
+        
+        <div class="param-group">
+            <label for="serial_number">Serial Number:</label>
+            <input type="text" id="serial_number" value="012345" />
+            <div class="comment">Serial Number of the device</div>
+        </div>
+    </div>
+
+    <button id="save_btn" style="padding: 8px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        Save Configuration
+    </button>
+
     <script src="main.js"></script>
+    <script>
+        function updateConnectionStatus(status) {
+            const indicator = document.getElementById('status-indicator');
+            const text = document.getElementById('status-text');
+            
+            indicator.className = '';
+            indicator.classList.add(status);
+            
+            text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function logConnectionEvent(message) {
+            const eventsPanel = document.getElementById('connection-events');
+            const eventElement = document.createElement('div');
+            eventElement.className = 'event';
+            
+            const timeElement = document.createElement('span');
+            timeElement.className = 'event-time';
+            timeElement.textContent = new Date().toLocaleTimeString();
+            
+            const messageElement = document.createElement('span');
+            messageElement.className = 'event-message';
+            messageElement.textContent = message;
+            
+            eventElement.appendChild(timeElement);
+            eventElement.appendChild(messageElement);
+            eventsPanel.appendChild(eventElement);
+            
+            eventsPanel.scrollTop = eventsPanel.scrollHeight;
+        }
+
+        function updateAttemptCount(current, max) {
+            document.getElementById('attempt-count').textContent = current;
+            document.getElementById('max-attempts').textContent = max;
+        }
+
+        window.connectionUI = {
+            updateConnectionStatus,
+            logConnectionEvent,
+            updateAttemptCount
+        };
+    </script>
 </body>
 </html>
