@@ -4,6 +4,7 @@ use configfile::Config;
 use econfmanager::interface::{InterfaceInstance, ParameterUpdateCallback};
 use econfmanager::generated::ParameterId;
 use serde::{Deserialize, Serialize};
+use warp::{Rejection, reject};
 use std::{net::SocketAddr, sync::{Arc, Mutex}};
 use warp::{Filter, ws::{Message, WebSocket}};
 use futures::{SinkExt, StreamExt};
@@ -14,6 +15,14 @@ use std::io::Write;
 
 pub mod arguments;
 pub mod configfile;
+
+#[derive(Debug)]
+enum ApiError {
+    BadRequest(String),
+    NotFound,
+}
+
+impl reject::Reject for ApiError {}
 
 
 #[derive(Default)]
@@ -56,6 +65,7 @@ async fn main() {
 
     let state_filter = warp::any().map(move || state.clone());
 
+    // WebSocket route
     let ws = warp::path("ws")
         .and(warp::ws())
         .and(state_filter.clone())
@@ -63,13 +73,28 @@ async fn main() {
             ws.on_upgrade(move |socket| handle_ws(socket, state))
         });
 
+    // REST API routes
+    let read_param = warp::path!("api" / "read" / String)
+        .and(warp::get())
+        .and(state_filter.clone())
+        .and_then(handle_read_param);
+
+    let write_param = warp::path!("api" / "write" / String)
+        .and(warp::post())
+        .and(warp::body::content_length_limit(1024 * 16)) // 16kb max
+        .and(warp::body::bytes())
+        .and(state_filter.clone())
+        .and_then(handle_write_param);
+        
+    let routes = ws.or(read_param).or(write_param);
+
     let addr_str = format!("{}:{}", config.json_rpc_listen_address, config.json_rpc_port);
     let socket_addr: SocketAddr = addr_str
         .parse()
         .expect("Failed to parse json_rpc_listen_address and json_rpc_port");
 
     println!("Listening on http://{}", socket_addr);
-    warp::serve(ws).run(socket_addr).await;
+    warp::serve(routes).run(socket_addr).await;
 }
 
 #[derive(Deserialize)]
@@ -242,4 +267,55 @@ async fn handle_ws(ws: WebSocket, state: SharedState) {
             }
         }
     }
+}
+
+async fn handle_read_param(name: String, state: SharedState) -> Result<impl warp::Reply, warp::Rejection> {
+    let app = state.lock().unwrap();
+    
+    if !app.names.contains(&name) {
+        return Err(warp::reject::not_found());
+    }
+
+    let parameter_id = app.interface
+        .get_parameter_id_from_name(name.clone())
+        .ok_or_else(|| warp::reject::not_found())?;
+
+    let value = app.interface.get(parameter_id, false)
+        .map_err(|_| warp::reject::not_found())?;
+
+    Ok(warp::reply::with_status(
+        value.to_string(),
+        warp::http::StatusCode::OK,
+    ))
+}
+
+async fn handle_write_param(
+    name: String,
+    value_bytes: warp::hyper::body::Bytes,
+    state: SharedState,
+) -> Result<impl warp::Reply, Rejection> {
+    let value_str = String::from_utf8(value_bytes.to_vec())
+        .map_err(|e| reject::custom(ApiError::BadRequest(format!("Invalid UTF-8: {}", e))))?;
+    
+    let app = state.lock().unwrap();
+    
+    if !app.names.contains(&name) {
+        return Err(reject::custom(ApiError::NotFound));
+    }
+
+    let parameter_id = app.interface
+        .get_parameter_id_from_name(name.clone())
+        .ok_or_else(|| reject::custom(ApiError::NotFound))?;
+
+    let value_json = serde_json::Value::String(value_str);
+    let converted = app.interface.set_from_json(parameter_id, &value_json)
+        .map_err(|e| reject::custom(ApiError::BadRequest(format!("Invalid value: {}", e))))?;
+
+    let applied = app.interface.set(parameter_id, converted)
+        .map_err(|e| reject::custom(ApiError::BadRequest(format!("Failed to set parameter: {}", e))))?;
+
+    Ok(warp::reply::with_status(
+        applied.to_string(),
+        warp::http::StatusCode::OK,
+    ))
 }
