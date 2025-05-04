@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+log = "0.4.27"
 clap = { version = "4.4", features = ["derive", "cargo"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 serde_json = "1"
 futures = "0.3"
+chrono = "0.4.41"
+env_logger = "0.11.8"
 econfmanager = {path = "../econfmanager"}

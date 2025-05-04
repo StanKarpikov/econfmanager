@@ -1,4 +1,3 @@
-const rpcUrl = "http://localhost:3030/rpc";
 const ws = new WebSocket("ws://localhost:3030/ws");
 
 function sendRpc(method, params, callback) {

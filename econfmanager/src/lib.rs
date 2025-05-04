@@ -31,7 +31,7 @@ use log::LevelFilter;
 use log::info;
 use parking_lot::Mutex;
 use std::{ffi::{c_char, CString}, ptr, sync::Arc};
-use interface::{InterfaceInstance, ParameterUpdateCallback};
+use interface::InterfaceInstance;
 use generated::ParameterId;
 
 const LOCK_TRYING_DURATION: Duration = Duration::from_secs(1);
@@ -160,10 +160,23 @@ pub extern "C" fn econf_get_name(interface: *const CInterfaceInstance, id: Param
     })
 }
 
+pub type ParameterUpdateCallbackFFI = extern "C" fn(id: ParameterId, arg: *mut std::ffi::c_void);
+
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_add_callback(interface: *const CInterfaceInstance, id: ParameterId, callback: ParameterUpdateCallback) -> EconfStatus {
+pub extern "C" fn econf_add_callback(interface: *const CInterfaceInstance, id: ParameterId, callback: ParameterUpdateCallbackFFI, user_data: *mut std::ffi::c_void) -> EconfStatus {
+    let closure = move |id: ParameterId| {
+        callback(id, user_data);
+    };
+    // SAFETY: We're asserting that the closure is Send+Sync even though it uses a raw pointer.
+    // This is okay only if `callback` and `user_data` are safe to call and use across threads!
+    let cb_boxed = unsafe {
+        std::mem::transmute::<
+            Arc<dyn Fn(ParameterId)>,
+            Arc<dyn Fn(ParameterId) + Send + Sync>
+        >(Arc::new(closure))
+    };
     interface_execute(interface, |interface| {
-        interface.add_callback(id, callback)
+        interface.add_callback(id, cb_boxed)
     })
 }
 

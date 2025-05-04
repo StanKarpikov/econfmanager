@@ -60,7 +60,7 @@ impl EventReceiver {
             let mut data = self.runtime_data.lock().unwrap();
             // Invalidate the cache so the next time the parameter is read it will be updated from the database
             data.parameters_data[index].value = None;
-            callback = data.parameters_data[index].callback;
+            callback = data.parameters_data[index].callback.clone();
         }
         if callback.is_some() {
             callback.unwrap()(id);

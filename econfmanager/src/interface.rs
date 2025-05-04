@@ -2,6 +2,9 @@ use std::sync::{Arc, Mutex};
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
+use serde_json::Value;
+use base64::prelude::*;
+use anyhow::{anyhow, Result};
 
 use crate::config::Config;
 use crate::event_receiver::EventReceiver;
@@ -13,7 +16,7 @@ use crate::schema::ParameterValue;
 use generated::{ParameterId, PARAMETERS_NUM, PARAMETER_DATA};
 use timer::Guard;
 
-pub type ParameterUpdateCallback = extern fn(id: ParameterId);
+pub type ParameterUpdateCallback = Arc<dyn Fn(ParameterId) + Send + Sync + 'static>;
 
 #[derive(Default)]
 pub(crate) struct RuntimeParametersData {
@@ -102,10 +105,68 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].name_id.to_owned()
     }
 
+    pub fn set_from_json(&self, id: ParameterId, value: &Value) -> Result<ParameterValue> {
+        let param_type = &PARAMETER_DATA[id as usize].value;
+    
+        let converted_value = match param_type {
+            ParameterValue::ValBool(_) => value
+                .as_bool()
+                .map(ParameterValue::ValBool)
+                .ok_or_else(|| anyhow!("Expected a boolean"))?,
+    
+            ParameterValue::ValI32(_) => value
+                .as_i64()
+                .map(|v| ParameterValue::ValI32(v as i32))
+                .ok_or_else(|| anyhow!("Expected an integer"))?,
+    
+            ParameterValue::ValU32(_) => value
+                .as_u64()
+                .map(|v| ParameterValue::ValU32(v as u32))
+                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
+    
+            ParameterValue::ValI64(_) => value
+                .as_i64()
+                .map(ParameterValue::ValI64)
+                .ok_or_else(|| anyhow!("Expected an integer"))?,
+    
+            ParameterValue::ValU64(_) => value
+                .as_u64()
+                .map(ParameterValue::ValU64)
+                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
+    
+            ParameterValue::ValF32(_) => value
+                .as_f64()
+                .map(|v| ParameterValue::ValF32(v as f32))
+                .ok_or_else(|| anyhow!("Expected a float"))?,
+    
+            ParameterValue::ValF64(_) => value
+                .as_f64()
+                .map(ParameterValue::ValF64)
+                .ok_or_else(|| anyhow!("Expected a float"))?,
+    
+            ParameterValue::ValString(_) => value
+                .as_str()
+                .map(|v| ParameterValue::ValString(v.to_string()))
+                .ok_or_else(|| anyhow!("Expected a string"))?,
+    
+            ParameterValue::ValBlob(_) => {
+                let base64_str = value.as_str().ok_or_else(|| anyhow!("Expected a base64 string"))?;
+                let decoded = BASE64_STANDARD.decode(base64_str)?;
+                ParameterValue::ValBlob(decoded)
+            }
+        };
+    
+        Ok(converted_value)
+    }
+
     pub fn get_parameter_names(&self) -> Vec<String> {
         PARAMETER_DATA.iter().map(|parameter| parameter.name_id.to_string()).collect()
     }
 
+    pub fn get_parameters_number(&self) -> usize {
+        PARAMETER_DATA.len()
+    }
+    
     pub fn get_parameter_id_from_name(&self, name: String) -> Option<ParameterId> {
         PARAMETER_DATA
             .iter()

@@ -11,6 +11,10 @@ pub(crate) struct Config {
     pub database_path: String,
     #[serde(default = "default_saved_database_path")]
     pub saved_database_path: String,
+    #[serde(default = "default_json_rpc_listen_address")]
+    pub json_rpc_listen_address: String,
+    #[serde(default = "default_json_rpc_port")]
+    pub json_rpc_port: String,
 }
 
 /******************************************************************************
@@ -23,6 +27,14 @@ fn default_database_path() -> String {
 
 fn default_saved_database_path() -> String {
     "configuration_saved.db".to_string()
+}
+
+fn default_json_rpc_listen_address() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_json_rpc_port() -> String {
+    "3000".to_string()
 }
 
 /******************************************************************************
