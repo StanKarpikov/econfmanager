@@ -48,7 +48,7 @@ async fn main() {
                 record.args()
             )
         })
-        .filter_level(LevelFilter::Debug)
+        .filter_level(LevelFilter::Info)
         .init();
 
     let args = Args::parse();
@@ -93,7 +93,7 @@ async fn main() {
         .parse()
         .expect("Failed to parse json_rpc_listen_address and json_rpc_port");
 
-    println!("Listening on http://{}", socket_addr);
+    info!("Listening on http://{}", socket_addr);
     warp::serve(routes).run(socket_addr).await;
 }
 

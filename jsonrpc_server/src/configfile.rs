@@ -34,7 +34,7 @@ fn default_json_rpc_listen_address() -> String {
 }
 
 fn default_json_rpc_port() -> String {
-    "3000".to_string()
+    "3030".to_string()
 }
 
 /******************************************************************************
