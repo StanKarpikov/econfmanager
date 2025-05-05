@@ -12,7 +12,7 @@ void update_callback(ParameterId id, void* arg)
     if(id == IMAGE_ACQUISITION_IMAGE_WIDTH)
     {
         image_acquisition_image_width_t image_acquisition_image_width;
-        EconfStatus status = get_device_serial_number(interface, &image_acquisition_image_width);
+        EconfStatus status = get_image_acquisition_image_width(interface, &image_acquisition_image_width);
         if (status == StatusOk) {
             printf("Image width update: %d\n", image_acquisition_image_width);
         } else {

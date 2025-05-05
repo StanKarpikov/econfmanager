@@ -1,13 +1,15 @@
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::sync::{Arc, Mutex};
 
-use log::{debug, info};
+use log::{debug, error, info, warn};
+use prost::Message;
 use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
 use crate::generated::ParameterId;
 
 use crate::interface::SharedRuntimeData;
+use crate::services::ParameterNotification;
 
 #[derive (Clone)]
 pub(crate) struct EventReceiver {
@@ -30,26 +32,65 @@ impl EventReceiver {
     pub(crate) fn multicast_receiver(&self, multicast_group: Ipv4Addr, port: u16) -> Result<(), Box<dyn std::error::Error>> {
         let local_addr = Ipv4Addr::new(0, 0, 0, 0);
         
-        let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-        socket.bind(&SocketAddrV4::new(local_addr, port).into())?;
-        
-        // Join the multicast group
-        socket.join_multicast_v4(&multicast_group, &local_addr)?;
-        
-        // Set multicast loopback to not receive our own messages
+        info!("Starting multicast receiver on {}:{}", multicast_group, port);
+    
+        let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))
+            .map_err(|e| {
+                error!("Socket creation failed: {}", e);
+                e
+            })?;
+    
+        socket.set_reuse_address(true)
+            .map_err(|e| warn!("SO_REUSEADDR failed (non-fatal): {}", e)).ok();
+    
+        #[cfg(target_os = "linux")]
+        socket.set_reuse_port(true)
+            .map_err(|e| warn!("SO_REUSEPORT failed (non-fatal): {}", e)).ok();
+    
+        socket.bind(&SocketAddrV4::new(local_addr, port).into())
+            .map_err(|e| {
+                error!("Failed to bind to port {}: {}", port, e);
+                e
+            })?;
+        info!("Successfully bound to UDP port {}", port);
+    
+        socket.join_multicast_v4(&multicast_group, &local_addr)
+            .map_err(|e| {
+                error!("Multicast join failed: {}", e);
+                e
+            })?;
         socket.set_multicast_loop_v4(false)?;
-        
+    
         let socket: UdpSocket = socket.into();
-        
-        info!("Waiting for multicast messages...");
+        info!("Listening for multicast messages...");
+    
         let mut buf = [0u8; 1024];
         loop {
-            let (num_bytes, src) = socket.recv_from(&mut buf)?;
-            let message = std::str::from_utf8(&buf[..num_bytes])
-                .unwrap_or("[non-utf8 data]");
-            debug!("Received from {}: {}", src, message);
-
-            self.notify_callback(ParameterId::DEVICE_DEVICE_NAME);
+            match socket.recv_from(&mut buf) {
+                Ok((num_bytes, src)) => {
+                    match ParameterNotification::decode(&buf[..num_bytes]) {
+                        Ok(notification) => {
+                            debug!("Received parameter notification from {}: id={}", src, notification.id);
+                            match ParameterId::try_from(notification.id as usize) {
+                                Ok(id) => self.notify_callback(id),
+                                Err(e) => {
+                                    error!("Could not decode ID {}: {}", notification.id, e);
+                                    continue
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to decode ParameterNotification from {}: {}", src, e);
+                            // Optionally continue or return error
+                            continue;
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Receive error: {}", e);
+                    return Err(Box::new(e));
+                }
+            }
         }
     }
 
@@ -63,7 +104,11 @@ impl EventReceiver {
             callback = data.parameters_data[index].callback.clone();
         }
         if callback.is_some() {
+            debug!("Call callback for {}", id as usize);
             callback.unwrap()(id);
+        }
+        else {
+            debug!("Callback for {} not defined", id as usize);
         }
     }
 }

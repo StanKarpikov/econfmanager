@@ -3,28 +3,52 @@ use clap::Parser;
 use configfile::Config;
 use econfmanager::interface::{InterfaceInstance, ParameterUpdateCallback};
 use econfmanager::generated::ParameterId;
+use env_logger::Env;
 use serde::{Deserialize, Serialize};
-use warp::{Rejection, reject};
+use warp::Rejection;
 use std::{net::SocketAddr, sync::{Arc, Mutex}};
 use warp::{Filter, ws::{Message, WebSocket}};
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
-use log::LevelFilter;
 use log::info;
 use std::io::Write;
+use warp::{http::StatusCode, reply::json};
+use serde_json::json;
 
 pub mod arguments;
 pub mod configfile;
 
-#[derive(Debug)]
-enum ApiError {
-    #[allow(dead_code)]
-    BadRequest(String),
-    NotFound,
+#[derive(Clone)]
+struct RouteInfo {
+    path: String,
+    method: String,
+    description: String,
 }
 
-impl reject::Reject for ApiError {}
-
+lazy_static::lazy_static! {
+    static ref ROUTES: Vec<RouteInfo> = vec![
+        RouteInfo {
+            path: "/ws".to_string(),
+            method: "GET".to_string(),
+            description: "WebSocket connection endpoint".to_string(),
+        },
+        RouteInfo {
+            path: "/api/read/:parameter".to_string(),
+            method: "GET".to_string(),
+            description: "Read a parameter value".to_string(),
+        },
+        RouteInfo {
+            path: "/api/write/:parameter".to_string(),
+            method: "POST".to_string(),
+            description: "Write a parameter value".to_string(),
+        },
+        RouteInfo {
+            path: "/info".to_string(),
+            method: "GET".to_string(),
+            description: "Shown info about the API".to_string(),
+        },
+    ];
+}
 
 #[derive(Default)]
 struct AppState {
@@ -35,22 +59,30 @@ struct AppState {
 
 type SharedState = Arc<Mutex<AppState>>;
 
+// #[tokio::main]
+// async fn main() {
+//     let listener = TcpListener::bind("0.0.0.0:3031").unwrap();
+//     println!("Listening on 3031...");
+//     loop {
+//         let _ = listener.accept().unwrap();
+//     }
+// }
+
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_default_env()
-        .format(|buf, record| {
-            writeln!(
-                buf,
-                "{} [{}] {}:{} - {}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                record.level(),
-                record.file().unwrap_or("unknown"),
-                record.line().unwrap_or(0),
-                record.args()
-            )
-        })
-        .filter_level(LevelFilter::Info)
-        .init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
+    .format(|buf, record| {
+        writeln!(
+            buf,
+            "{} [{}] {}:{} - {}",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+            record.level(),
+            record.file().unwrap_or("unknown"),
+            record.line().unwrap_or(0),
+            record.args()
+        )
+    })
+    .init();
 
     let args = Args::parse();
     let config = Config::from_file(args.config);
@@ -80,14 +112,19 @@ async fn main() {
         .and(state_filter.clone())
         .and_then(handle_read_param);
 
+    let info = warp::path!("api" / "info")
+        .and(warp::get())
+        .and(state_filter.clone())
+        .and_then(handle_info);
+
     let write_param = warp::path!("api" / "write" / String)
         .and(warp::post())
-        .and(warp::body::content_length_limit(1024 * 16)) // 16kb max
+        .and(warp::body::content_length_limit(1024 * 1024)) // 1M max
         .and(warp::body::bytes())
         .and(state_filter.clone())
         .and_then(handle_write_param);
         
-    let routes = ws.or(read_param).or(write_param);
+    let routes = ws.or(read_param).or(write_param).or(info);
 
     let addr_str = format!("{}:{}", config.json_rpc_listen_address, config.json_rpc_port);
     let socket_addr: SocketAddr = addr_str
@@ -270,24 +307,62 @@ async fn handle_ws(ws: WebSocket, state: SharedState) {
     }
 }
 
+async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejection> {
+    let app = state.lock().unwrap();
+    let routes_json = ROUTES.iter().map(|r| {
+        json!({
+            "path": r.path,
+            "method": r.method,
+            "description": r.description
+        })
+    }).collect::<Vec<_>>();
+    Ok(warp::reply::with_status(
+        json(&json!({"parameters": app.names, "routes": routes_json})),
+        StatusCode::OK,
+    ))
+}
+
 async fn handle_read_param(name: String, state: SharedState) -> Result<impl warp::Reply, warp::Rejection> {
     let app = state.lock().unwrap();
     
     if !app.names.contains(&name) {
-        return Err(warp::reject::not_found());
+        let error_response = json(&json!({
+            "error": format!("Parameter |{}| does not exist", name)
+        }));
+        return Ok(warp::reply::with_status(
+            error_response,
+            StatusCode::NOT_FOUND,
+        ));
     }
 
-    let parameter_id = app.interface
-        .get_parameter_id_from_name(name.clone())
-        .ok_or_else(|| warp::reject::not_found())?;
+    let parameter_id = match app.interface.get_parameter_id_from_name(name.clone()) {
+        Some(id) => id,
+        None => {
+            let error_response = json(&json!({
+                "error": format!("Could not find ID for parameter |{}|", name)
+            }));
+            return Ok(warp::reply::with_status(
+                error_response,
+                StatusCode::NOT_FOUND,
+            ));
+        }
+    };
 
-    let value = app.interface.get(parameter_id, false)
-        .map_err(|_| warp::reject::not_found())?;
-
-    Ok(warp::reply::with_status(
-        value.to_string(),
-        warp::http::StatusCode::OK,
-    ))
+    match app.interface.get(parameter_id, false) {
+        Ok(value) => Ok(warp::reply::with_status(
+            json(&json!(value)),
+            StatusCode::OK,
+        )),
+        Err(err) => {
+            let error_response = json(&json!({
+                "error": format!("Failed to read parameter |{}|: {:?}", name, err)
+            }));
+            Ok(warp::reply::with_status(
+                error_response,
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    }
 }
 
 async fn handle_write_param(
@@ -295,28 +370,75 @@ async fn handle_write_param(
     value_bytes: warp::hyper::body::Bytes,
     state: SharedState,
 ) -> Result<impl warp::Reply, Rejection> {
-    let value_str = String::from_utf8(value_bytes.to_vec())
-        .map_err(|e| reject::custom(ApiError::BadRequest(format!("Invalid UTF-8: {}", e))))?;
-    
+    let value_str = match String::from_utf8(value_bytes.to_vec()) {
+        Ok(s) => s,
+        Err(e) => {
+            let error_response = json(&json!({
+                "error": format!("Invalid UTF-8 data: {}", e)
+            }));
+            return Ok(warp::reply::with_status(
+                error_response,
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
     let app = state.lock().unwrap();
     
     if !app.names.contains(&name) {
-        return Err(reject::custom(ApiError::NotFound));
+        let error_response = json(&json!({
+            "error": format!("Parameter |{}| does not exist", name)
+        }));
+        return Ok(warp::reply::with_status(
+            error_response,
+            StatusCode::NOT_FOUND,
+        ));
     }
 
-    let parameter_id = app.interface
-        .get_parameter_id_from_name(name.clone())
-        .ok_or_else(|| reject::custom(ApiError::NotFound))?;
+    let parameter_id = match app.interface.get_parameter_id_from_name(name.clone()) {
+        Some(id) => id,
+        None => {
+            let error_response = json(&json!({
+                "error": format!("No ID found for parameter |{}|", name)
+            }));
+            return Ok(warp::reply::with_status(
+                error_response,
+                StatusCode::NOT_FOUND,
+            ));
+        }
+    };
 
-    let value_json = serde_json::Value::String(value_str);
-    let converted = app.interface.set_from_json(parameter_id, &value_json)
-        .map_err(|e| reject::custom(ApiError::BadRequest(format!("Invalid value: {}", e))))?;
+    let converted = match app.interface.set_from_string(parameter_id, &value_str) {
+        Ok(v) => v,
+        Err(e) => {
+            let error_response = json(&json!({
+                "error": format!("Invalid parameter |{}| value |{}|: {}", name, value_str, e)
+            }));
+            return Ok(warp::reply::with_status(
+                error_response,
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
 
-    let applied = app.interface.set(parameter_id, converted)
-        .map_err(|e| reject::custom(ApiError::BadRequest(format!("Failed to set parameter: {}", e))))?;
-
-    Ok(warp::reply::with_status(
-        applied.to_string(),
-        warp::http::StatusCode::OK,
-    ))
+    match app.interface.set(parameter_id, converted) {
+        Ok(applied) => {
+            let success_response = json(&json!(
+                applied
+            ));
+            Ok(warp::reply::with_status(
+                success_response,
+                StatusCode::OK,
+            ))
+        },
+        Err(e) => {
+            let error_response = json(&json!({
+                "error": format!("Failed to set parameter |{}|: {}", name, e)
+            }));
+            Ok(warp::reply::with_status(
+                error_response,
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    }
 }

@@ -105,6 +105,67 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].name_id.to_owned()
     }
 
+    pub fn set_from_string(&self, id: ParameterId, value: &str) -> Result<ParameterValue> {
+        let param_type = &PARAMETER_DATA[id as usize].value;
+        
+        let converted_value = match param_type {
+            ParameterValue::ValBool(_) => {
+                match value.to_lowercase().as_str() {
+                    "true" | "1" => ParameterValue::ValBool(true),
+                    "false" | "0" => ParameterValue::ValBool(false),
+                    _ => return Err(anyhow!("Expected 'true' or 'false' for boolean")),
+                }
+            },
+            
+            ParameterValue::ValI32(_) => {
+                value.parse::<i32>()
+                    .map(ParameterValue::ValI32)
+                    .map_err(|_| anyhow!("Expected a 32-bit integer"))?
+            },
+            
+            ParameterValue::ValU32(_) => {
+                value.parse::<u32>()
+                    .map(ParameterValue::ValU32)
+                    .map_err(|_| anyhow!("Expected an unsigned 32-bit integer"))?
+            },
+            
+            ParameterValue::ValI64(_) => {
+                value.parse::<i64>()
+                    .map(ParameterValue::ValI64)
+                    .map_err(|_| anyhow!("Expected a 64-bit integer"))?
+            },
+            
+            ParameterValue::ValU64(_) => {
+                value.parse::<u64>()
+                    .map(ParameterValue::ValU64)
+                    .map_err(|_| anyhow!("Expected an unsigned 64-bit integer"))?
+            },
+            
+            ParameterValue::ValF32(_) => {
+                value.parse::<f32>()
+                    .map(ParameterValue::ValF32)
+                    .map_err(|_| anyhow!("Expected a 32-bit float"))?
+            },
+            
+            ParameterValue::ValF64(_) => {
+                value.parse::<f64>()
+                    .map(ParameterValue::ValF64)
+                    .map_err(|_| anyhow!("Expected a 64-bit float"))?
+            },
+            
+            ParameterValue::ValString(_) => {
+                ParameterValue::ValString(value.to_string())
+            },
+            
+            ParameterValue::ValBlob(_) => {
+                let decoded = BASE64_STANDARD.decode(value)?;
+                ParameterValue::ValBlob(decoded)
+            }
+        };
+        
+        Ok(converted_value)
+    }
+
     pub fn set_from_json(&self, id: ParameterId, value: &Value) -> Result<ParameterValue> {
         let param_type = &PARAMETER_DATA[id as usize].value;
     

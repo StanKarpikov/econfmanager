@@ -8,6 +8,6 @@ use clap::Parser;
     about = clap::crate_description!()
 )]
 pub(crate) struct Args {
-    #[arg(short, long, default_value = "config.json")]
+    #[arg(short, long)]
     pub config: String,
 }

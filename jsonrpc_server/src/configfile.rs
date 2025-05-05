@@ -43,7 +43,7 @@ fn default_json_rpc_port() -> String {
 
 impl Config {
     pub(crate) fn from_file(config_file:String) -> Config {
-        let file_content = fs::read_to_string(std::path::Path::new(&config_file)).expect("Failed to read the file");
+        let file_content = fs::read_to_string(std::path::Path::new(&config_file)).expect(&format!("Failed to read configuration file {}", config_file));
         let config: Config = serde_json::from_str(&file_content).expect("Failed to parse JSON");
         config
     }
