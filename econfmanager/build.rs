@@ -76,7 +76,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ancestors()
         .nth(3) // OUT_DIR is like target/debug/build/crate-hash/out
         .expect("Failed to find build directory");
-    println!("cargo:rustc-env=GENERATED_FILES_DIR={}", build_dir.to_str().unwrap().to_owned());
+
+    let generated_dir_path = build_dir.ancestors().nth(1).expect("Failed to find generated files directory").join("generated");
+    let generated_dir = generated_dir_path.as_path();
+    // println!("cargo:rustc-env=GENERATED_FILES_DIR={}", generated_dir.to_str().unwrap().to_owned());
+    fs::create_dir_all(generated_dir)
+        .unwrap_or_else(|op|{panic!("Failed creating generated files dir: {}", op)});
 
     let schema = SchemaManager::new(
         abs_descriptor_path.into_os_string().into_string().unwrap(),
@@ -86,13 +91,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|op|{panic!("Error creating schema: {}", op)});
     let parameters = schema.get_parameters()
         .unwrap_or_else(|op|{panic!("Error getting parameters list: {}", op)});
+
     generate_parameter_ids(&parameters, build_dir.to_str().unwrap().to_owned())
         .unwrap_or_else(|op|{panic!("Error generating parameters ids: {}", op)});
 
-    generate_parameter_enum(&parameters, build_dir.to_str().unwrap().to_owned())
+    generate_parameter_enum(&parameters, generated_dir.to_str().unwrap().to_owned())
         .unwrap_or_else(|op|{panic!("Error generating parameters enum: {}", op)});
 
-    generate_parameter_functions(&parameters, build_dir.to_str().unwrap().to_owned())
+    generate_parameter_functions(&parameters, generated_dir.to_str().unwrap().to_owned())
         .unwrap_or_else(|op|{panic!("Error generating parameters functions: {}", op)});
 
     let header_path = build_dir.join("econfmanager.h");

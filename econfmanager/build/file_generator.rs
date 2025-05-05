@@ -105,7 +105,7 @@ pub(crate) fn generate_parameter_enum(
 
     writeln!(f, "pub const PARAMETER_DATA: &'static [Parameter] = &[")?;
 
-    for (idx, p) in parameters.iter().enumerate() {
+    for (_idx, p) in parameters.iter().enumerate() {
         let value_code = match &p.value {
             ParameterValue::ValBool(b) => format!("ParameterValue::ValBool({})", b),
             ParameterValue::ValI32(i) => format!("ParameterValue::ValI32({})", i),
@@ -148,6 +148,7 @@ pub(crate) fn generate_parameter_enum(
 
         writeln!(f, "        Parameter {{")?;
         writeln!(f, "            value: {},", value_code)?;
+        // writeln!(f, "            id: {:?},", enum_variants[idx])?;
         writeln!(f, "            name_id: {:?},", p.name_id)?;
         writeln!(f, "            validation: {},", validation_code)?;
         writeln!(f, "            comment: {:?},", p.comment)?;

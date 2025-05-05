@@ -11,7 +11,6 @@ prost = "0.13.5"
 prost-reflect = "0.15.2"
 rusqlite = {version = "0.35.0", features = ["backup"]}
 serde_json = "1.0"
-nng = "1.0"
 num_enum = "0.7.3"
 socket2 = "0.5"
 timer = "0.2.0"

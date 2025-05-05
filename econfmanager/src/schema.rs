@@ -1,6 +1,6 @@
 use std::{error::Error, fmt};
 use prost_reflect::{DescriptorPool, DynamicMessage, FileDescriptor, MessageDescriptor, ReflectMessage, Value};
-use serde::ser::{Serialize, Serializer, SerializeStruct};
+use serde::ser::{Serialize, Serializer};
 
 pub(crate) struct SchemaManager {
     config_descriptor: MessageDescriptor,

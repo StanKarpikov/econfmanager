@@ -49,7 +49,7 @@ impl InterfaceInstance {
         database_path: &String,
         saved_database_path: &String,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let config = Config::new(&env!("CONFIGURATION_PROTO_FILE").to_string(), database_path, saved_database_path)?;
+        let config = Config::new(database_path, saved_database_path)?;
         let database = DatabaseManager::new(&config)?;
         let runtime_data = Arc::new(Mutex::new(SharedRuntimeData::new()?));
         let notifier = Notifier::new()?;

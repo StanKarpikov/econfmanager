@@ -15,19 +15,20 @@ pub mod parameter_ids {
 pub mod parameters {
     include!(concat!(env!("OUT_DIR"), "/parameters.rs"));
 }
-pub mod parameter_functions {
-    include!(concat!(env!("GENERATED_FILES_DIR"), "/parameter_functions.rs"));
-}
-pub mod generated {
-    include!(concat!(env!("GENERATED_FILES_DIR"), "/generated.rs"));
-}
+
+#[path = "../../target/generated/parameter_functions.rs"]
+pub mod parameter_functions;
+
+#[path = "../../target/generated/generated.rs"]
+pub mod generated;
+
 
 use std::io::Write;
 use std::time::Duration;
+use env_logger::Env;
 use lib_helper_functions::interface_execute;
 use log::error;
 use timer::Timer;
-use log::LevelFilter;
 use log::info;
 use parking_lot::Mutex;
 use std::{ffi::{c_char, CString}, ptr, sync::Arc};
@@ -106,7 +107,7 @@ pub extern "C" fn econf_init(
         saved_database_path: *const std::os::raw::c_char,
         interface: *mut *mut CInterfaceInstance
     ) -> EconfStatus {
-    env_logger::Builder::from_default_env()
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
         .format(|buf, record| {
             writeln!(
                 buf,
@@ -118,7 +119,6 @@ pub extern "C" fn econf_init(
                 record.args()
             )
         })
-        .filter_level(LevelFilter::Debug)
         .init();
 
     let database_path = unsafe { std::ffi::CStr::from_ptr(database_path).to_string_lossy().into_owned() };

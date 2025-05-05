@@ -18,6 +18,7 @@ pub mod configfile;
 
 #[derive(Debug)]
 enum ApiError {
+    #[allow(dead_code)]
     BadRequest(String),
     NotFound,
 }

@@ -1,2 +1,6 @@
 language = "C"
 style = "type"
+
+[parse]
+parse_deps = true
+include = ["generated/generated.rs"]
