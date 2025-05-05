@@ -10,7 +10,7 @@ use std::{net::SocketAddr, sync::{Arc, Mutex}};
 use warp::{Filter, ws::{Message, WebSocket}};
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
-use log::info;
+use log::{debug, error, info, warn};
 use std::io::Write;
 use warp::{http::StatusCode, reply::json};
 use serde_json::json;
@@ -59,15 +59,6 @@ struct AppState {
 
 type SharedState = Arc<Mutex<AppState>>;
 
-// #[tokio::main]
-// async fn main() {
-//     let listener = TcpListener::bind("0.0.0.0:3031").unwrap();
-//     println!("Listening on 3031...");
-//     loop {
-//         let _ = listener.accept().unwrap();
-//     }
-// }
-
 #[tokio::main]
 async fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
@@ -99,7 +90,7 @@ async fn main() {
     let state_filter = warp::any().map(move || state.clone());
 
     // WebSocket route
-    let ws = warp::path("ws")
+    let ws = warp::path("api_ws")
         .and(warp::ws())
         .and(state_filter.clone())
         .map(|ws: warp::ws::Ws, state| {
@@ -149,17 +140,31 @@ struct RpcResponse {
 }
 
 fn notify_client(app: &mut AppState, id: ParameterId) {
+    let parameter_name = app.interface.get_name(id);
+
+    let Ok(value) = app.interface.get(id, false) else {
+        let op = app.interface.get(id, false).unwrap_err();
+        error!("Could not read parameter {} in notification: {}", id as usize, op);
+        return;
+    };
+
     let notification = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "notify",
         "params": {
-            "id": id as usize
+            parameter_name.clone(): InterfaceInstance::value_to_string(&value),
         }
     })
     .to_string();
 
+    debug!("Notify subscribers for ID {} {}: {}", id as usize, parameter_name, notification);
     for tx in app.subscribers[id as usize].clone() {
-        let _ = tx.send(Message::text(notification.clone()));
+        match tx.send(Message::text(notification.clone())) {
+            Ok(_) => {},
+            Err(err) => {
+                error!("Failed notification: {}", err);
+            },
+        }
     }
 }
 
@@ -172,6 +177,7 @@ fn handle_rpc_logic_ws(
 
     match req.method.as_str() {
         "read" => {
+            debug!("Got read request {:?}", req.params);
             let name = req.params
                 .as_ref()
                 .and_then(|p| p.get("name"))
@@ -211,38 +217,65 @@ fn handle_rpc_logic_ws(
 
             Ok(serde_json::json!({ "pm": { name: value } }))
         }
+
         "write" => {
-            let params = req.params.as_ref().ok_or("Missing parameters")?;
+            debug!("Got write request {:?}", req.params);
+            let params = req.params.as_ref().ok_or_else(|| {
+                let msg = "Missing parameters";
+                error!("{}", msg);
+                msg
+            })?;
+            
             let name = params.get("name")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| {return "Could not decode parameter name".into()});
+                .ok_or_else(|| {
+                    let msg = "Could not decode parameter name";
+                    error!("{}", msg);
+                    msg
+                })?;
 
             if !app.names.contains(&name.to_string()) {
-                return Err(format!("Unknown parameter {}", name).into());
+                let msg = format!("Unknown parameter {}", name);
+                error!("{}", msg);
+                return Err(msg);
             }
 
             let parameter_id = app.interface.get_parameter_id_from_name(name.to_string())
-                .ok_or(format!("Could not find parameter ID for {}", name))?;
+                .ok_or_else(|| {
+                    let msg = format!("Could not find parameter ID for {}", name);
+                    error!("{}", msg);
+                    msg
+                })?;
 
             let value = params.get("value")
-                .ok_or("Missing value field")?;
+                .ok_or_else(|| {
+                    let msg = "Missing value field";
+                    error!("{}", msg);
+                    msg
+                })?;
 
-            let converted = app.interface.set_from_json(parameter_id, value)
-                .map_err(|e| format!("Unsupported type {}", e))?;
+            let converted = app.interface.set_from_string(parameter_id, value.as_str().unwrap())
+                .map_err(|e| {
+                    let msg = format!("Unsupported type of |{}| id {} {}: {}", value, parameter_id as usize, name, e);
+                    error!("{}", msg);
+                    msg
+                })?;
 
             let applied = app.interface.set(parameter_id, converted)
-                .map_err(|e| format!("Failed to set the parameter {}", e))?;
+                .map_err(|e| format!("Failed to set the parameter {} id {} {}", e, parameter_id as usize, name))?;
 
             Ok(serde_json::json!({ "pm": { name: applied } }))
         },
 
         "save" => {
+            debug!("Got save request");
             app.interface.save()
                 .map_err(|e| format!("Could not save: {}", e))?;
             Ok(serde_json::json!({ "status": "saved" }))
         },
 
         "restore" => {
+            debug!("Got restore request");
             app.interface.load()
                 .map_err(|e| format!("Could not restore: {}", e))?;
             Ok(serde_json::json!({ "status": "restored" }))
@@ -255,54 +288,84 @@ fn handle_rpc_logic_ws(
 async fn handle_ws(ws: WebSocket, state: SharedState) {
     let (mut client_ws_tx, mut client_ws_rx) = ws.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
 
     info!("Client connected");
 
-    // Spawn a task to forward messages from internal channel to websocket
-    tokio::task::spawn(async move {
+    let mut forward_task = tokio::task::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            let _ = client_ws_tx.send(msg).await;
+            debug!("Send message {:?}", msg);
+            if client_ws_tx.send(msg).await.is_err() {
+                break; // Exit if send fails (connection closed)
+            }
         }
     });
 
-    while let Some(result) = client_ws_rx.next().await {
-        match result {
-            Ok(msg) => {
-                if msg.is_text() {
-                    if let Ok(req) = serde_json::from_str::<RpcRequest>(msg.to_str().unwrap()) {
-                        let result = match handle_rpc_logic_ws(state.clone(), &req, tx.clone()) {
-                            Ok(value) => value,
-                            Err(error) => serde_json::json!({ "error": error }),
-                        };
-                        let response = RpcResponse {
-                            id: req.id,
-                            result,
-                        };
-                        let _ = tx.send(Message::text(serde_json::to_string(&response).unwrap()));
+    let mut connection_active = true;
+    
+    while connection_active {
+        tokio::select! {
+            msg = client_ws_rx.next() => {
+                debug!("Received message {:?}", msg);
+                match msg {
+                    Some(Ok(msg)) => {
+                        if msg.is_text() {
+                            if let Ok(req) = serde_json::from_str::<RpcRequest>(msg.to_str().unwrap()) {
+                                let result = match handle_rpc_logic_ws(state.clone(), &req, tx.clone()) {
+                                    Ok(value) => value,
+                                    Err(error) => serde_json::json!({ "error": error }),
+                                };
+                                let response = RpcResponse {
+                                    id: req.id,
+                                    result,
+                                };
+                                let _ = tx.send(Message::text(serde_json::to_string(&response).unwrap()));
+                            }
+                        }
+                    },
+                    Some(Err(e)) => {
+                        info!("WebSocket error: {}", e);
+                        connection_active = false;
+                    },
+                    None => {
+                        info!("Client disconnected gracefully");
+                        connection_active = false;
                     }
                 }
             },
-            Err(e) => {
-                info!("Client disconnected ({})", e);
 
-                let mut app = state.lock().unwrap();
-                let mut indices_to_delete = Vec::new();
-
-                for (idx, param_subscribers) in app.subscribers.iter_mut().enumerate() {
-                    param_subscribers.retain(|sub| !sub.same_channel(&tx));
-                    if param_subscribers.is_empty() {
-                        indices_to_delete.push(idx);
-                    }
+            _ = interval.tick() => {
+                if tx.send(Message::ping(vec![])).is_err() {
+                    connection_active = false;
                 }
+            },
 
-                for idx in indices_to_delete {
-                    if let Ok(id) = ParameterId::try_from(idx) {
-                        let _ = app.interface.delete_callback(id);
-                    }
-                }
-                
-                break; // Exit loop on error (e.g., connection closed)
+            _ = &mut forward_task => {
+                info!("Forwarding task terminated");
+                connection_active = false;
             }
+        }
+    }
+
+    let mut app = match state.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!("Mutex poisoned, attempting recovery");
+            poisoned.into_inner()
+        }
+    };
+
+    let mut indices_to_delete = Vec::new();
+    for (idx, param_subscribers) in app.subscribers.iter_mut().enumerate() {
+        param_subscribers.retain(|sub| !sub.same_channel(&tx));
+        if param_subscribers.is_empty() {
+            indices_to_delete.push(idx);
+        }
+    }
+
+    for idx in indices_to_delete {
+        if let Ok(id) = ParameterId::try_from(idx) {
+            let _ = app.interface.delete_callback(id);
         }
     }
 }

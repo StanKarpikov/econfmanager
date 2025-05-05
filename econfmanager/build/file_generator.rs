@@ -22,13 +22,22 @@ fn format_anyvalue(v: &ParameterValue) -> String {
     match v {
         ParameterValue::ValBool(b) => format!("ParameterValue::ValBool({})", b),
         ParameterValue::ValI32(i) => format!("ParameterValue::ValI32({})", i),
-        ParameterValue::ValString(s) => format!("ParameterValue::ValString(String::from({:?}))", s),
-        ParameterValue::ValU32(_) => format!("ParameterValue::ValI32(0)"),
-        ParameterValue::ValI64(_) => format!("ParameterValue::ValI32(0)"),
-        ParameterValue::ValU64(_) => format!("ParameterValue::ValI32(0)"),
-        ParameterValue::ValF32(_) => format!("ParameterValue::ValI32(0)"),
-        ParameterValue::ValF64(_) => format!("ParameterValue::ValI32(0)"),
-        ParameterValue::ValBlob(_) => format!("ParameterValue::ValI32(0)"),
+        ParameterValue::ValString(s) => format!("ParameterValue::ValString(Cow::Borrowed(\"{}\"))", s),
+        // ParameterValue::ValStaticString(s) => format!("ParameterValue::ValStaticString(\"{}\")", s),
+        ParameterValue::ValU32(u) => format!("ParameterValue::ValU32({})", u),
+        ParameterValue::ValI64(i) => format!("ParameterValue::ValI64({})", i),
+        ParameterValue::ValU64(u) => format!("ParameterValue::ValU64({})", u),
+        ParameterValue::ValF32(f) => format!("ParameterValue::ValF32({}f32)", f),
+        ParameterValue::ValF64(f) => format!("ParameterValue::ValF64({}f64)", f),
+        ParameterValue::ValBlob(data) => 
+            {
+                let bytes_str = data
+                    .iter()
+                    .map(|b| format!("0x{:02X}", b))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("ParameterValue::ValBlob(vec![{}])", bytes_str)
+            },
     }
 }
 
@@ -82,6 +91,7 @@ pub(crate) fn generate_parameter_enum(
     let mut f = File::create(dest_path)?;
 
     writeln!(f, "use num_enum::TryFromPrimitive;")?;
+    writeln!(f, "use std::borrow::Cow;")?;
     writeln!(
         f,
         "use crate::schema::{{Parameter, ParameterValue, ValidationMethod}};"
@@ -104,21 +114,8 @@ pub(crate) fn generate_parameter_enum(
     writeln!(f, "pub const PARAMETERS_NUM:usize = {};\n", enum_variants.len())?;
 
     writeln!(f, "pub const PARAMETER_DATA: &'static [Parameter] = &[")?;
-
-    for (_idx, p) in parameters.iter().enumerate() {
-        let value_code = match &p.value {
-            ParameterValue::ValBool(b) => format!("ParameterValue::ValBool({})", b),
-            ParameterValue::ValI32(i) => format!("ParameterValue::ValI32({})", i),
-            ParameterValue::ValString(s) => {
-                format!("ParameterValue::ValString(String::from({:?}))", s)
-            }
-            ParameterValue::ValU32(_) => format!("ParameterValue::ValI32(0)"),
-            ParameterValue::ValI64(_) => format!("ParameterValue::ValI32(0)"),
-            ParameterValue::ValU64(_) => format!("ParameterValue::ValI32(0)"),
-            ParameterValue::ValF32(_) => format!("ParameterValue::ValI32(0)"),
-            ParameterValue::ValF64(_) => format!("ParameterValue::ValI32(0)"),
-            ParameterValue::ValBlob(_) => format!("ParameterValue::ValI32(0)"),
-        };
+    for p in parameters{
+        let value_code = format_anyvalue(&p.value);
         let validation_code = match &p.validation {
             ValidationMethod::None => "ValidationMethod::None".to_string(),
             ValidationMethod::Range { min, max } => format!(
@@ -133,7 +130,7 @@ pub(crate) fn generate_parameter_enum(
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!(
-                    "ValidationMethod::AllowedValues {{ values: vec![{}] }}",
+                    "ValidationMethod::AllowedValues {{ values: Cow::Borrowed(&[{}]) }}",
                     vals
                 )
             }
@@ -154,6 +151,7 @@ pub(crate) fn generate_parameter_enum(
         writeln!(f, "            comment: {:?},", p.comment)?;
         writeln!(f, "            is_const: {},", p.is_const)?;
         writeln!(f, "            tags: vec![{}],", tags_code)?;
+        writeln!(f, "            runtime: {},", p.runtime)?;
         writeln!(f, "        }},")?;
     }
 
@@ -171,6 +169,7 @@ pub(crate) fn generate_parameter_functions(
 
     writeln!(f, "/// Auto‐generated. See build.rs\n")?;
     
+    writeln!(f, "use std::ffi::c_char;")?;
     writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, set_parameter}}, generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
     
     for p in parameters {
@@ -180,6 +179,7 @@ pub(crate) fn generate_parameter_functions(
             ParameterValue::ValBool(_) => "bool",
             ParameterValue::ValI32(_) => "i32",
             ParameterValue::ValString(_) => "c_char",
+            // ParameterValue::ValStaticString(_) => "c_char",
             ParameterValue::ValU32(_) => "u32",
             ParameterValue::ValI64(_) => "i64",
             ParameterValue::ValU64(_) => "u64",

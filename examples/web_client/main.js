@@ -2,7 +2,7 @@
  * CONSTANTS
  ******************************************************************************/
 
-const WEBSOCKET_ADDRESS = "ws://localhost:3030";
+const WEBSOCKET_ADDRESS = "ws://localhost:3031/api_ws";
 const REQUEST_TIMEOUT = 5000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_INTERVAL = 5000;
@@ -14,6 +14,7 @@ const RECONNECT_INTERVAL = 5000;
 let ws = null;
 
 let reconnectTimer = null;
+let reconnectAttempts = 0;
 
 const pendingRequests = {};
 
@@ -56,20 +57,66 @@ function sendRpc(method, params) {
         };
 
         const timeoutId = setTimeout(() => {
-            reject(new Error("Request timed out"));
+            reject(new Error(`Request ${request.id} timed out after ${REQUEST_TIMEOUT}ms`));
             cleanupRequest(request.id);
         }, REQUEST_TIMEOUT);
 
         pendingRequests[request.id] = {
-            resolve: callback,
+            resolve: (result) => {
+                resolve(result);
+                cleanupRequest(request.id);
+            },
             reject: (error) => {
-                console.error("Request failed:", error);
-                callback({ error: error.message });
+                reject(error);
+                cleanupRequest(request.id);
             },
             timeout: timeoutId
         };
+
+        if (ws.readyState !== WebSocket.OPEN) {
+            cleanupRequest(request.id);
+            reject(new Error('WebSocket is not connected'));
+            return;
+        }
+
         ws.send(JSON.stringify(request));
     });
+}
+
+/******************************************************************************
+ * UI FUNCTIONS
+ ******************************************************************************/
+
+function updateParam(id, value) {
+    try {
+        if (!parameters[id]) {
+            console.error(`Parameter ${id} not found`);
+            return;
+        }
+
+        parameters[id].value = value;
+
+        const element = parameters[id].element;
+        if (element) {
+            element.removeEventListener("change", parameters[id].changeHandler);
+            
+            if (element.type === 'checkbox') {
+                element.checked = Boolean(value);
+            } else if (element.type === 'number' || element.type === 'range') {
+                element.value = Number(value);
+            } else if (element.type === 'text' || element.tagName === 'TEXTAREA') {
+                element.value = String(value);
+            } else if (element.tagName === 'SELECT') {
+                element.value = String(value);
+            } else {
+                element.value = value;
+            }
+
+            element.addEventListener("change", parameters[id].changeHandler);
+        }
+    } catch (error) {
+        console.error(`Error updating parameter ${id}:`, error);
+    }
 }
 
 /******************************************************************************
@@ -88,16 +135,21 @@ async function setupParameters() {
 
 function setupParameter(id, group) {
     try {
+        const changeHandler = async () => {
+            await writeParameter(id);
+        };
+
         parameters[id] = {
             id,
             group,
-            element: document.getElementById(id)
+            element: document.getElementById(id),
+            changeHandler
         };
 
         if (parameters[id].element) {
-            parameters[id].element.addEventListener("change", async () => {
-                await writeParameter(id);
-            });
+            if (parameters[id].element) {
+                parameters[id].element.addEventListener("change", parameters[id].changeHandler);
+            }
         }
     } catch (error) {
         console.error(`Error setting up parameter ${id}:`, error);
@@ -126,12 +178,19 @@ async function writeParameter(id) {
         const value = parameters[id].element.value;
         const requestName = `${parameters[id].group}@${id}`;
         
-        await sendRpc("write", { 
+        const result = await sendRpc("write", { 
             name: requestName, 
             value: value 
         });
+        if (result && result.pm && result.pm[requestName] !== undefined) {
+            updateParam(id, result.pm[requestName]);
+            console.log(`Successfully updated ${id}`);
+        }
+        else
+        {
+            console.log(`Error updating paramter. Got result: ${JSON.stringify(result, null, 4)}`);
+        }
         
-        console.log(`Successfully updated ${id}`);
     } catch (error) {
         console.error(`Error updating parameter ${id}:`, error);
     }
@@ -148,12 +207,21 @@ async function readAllParameters() {
 
 function process_notification(msg)
 {
-    const paramFullName = msg.params.parameter;
-    if (paramFullName) {
-        const [group, id] = paramFullName.split('@');
-        if (parameters[id] && parameters[id].group === group) {
-            updateParam(id, msg.params.value);
-        }
+    if (msg.params) {
+        Object.keys(msg.params).forEach(function(key) {
+            try {
+                const [group, id] = key.split('@');
+                if (parameters[id] && parameters[id].group === group) {
+                    updateParam(id, msg.params[key]);
+                }
+            } catch (e) {
+                console.error(`Error processing parameter ${key}: ${e}`);
+            }
+        });
+    }
+    else
+    {
+        console.warning("Could not get the parameters list, msg.params=", msg.params);
     }
 }
 
@@ -178,6 +246,30 @@ function connectWebSocket() {
     ws.onmessage = handleWebSocketMessage;
     ws.onerror = handleWebSocketError;
 }
+
+function handleWebSocketMessage(event) {
+    try {
+        console.info("Got message:", event);
+        const msg = JSON.parse(event.data);
+        
+        if (msg.id && pendingRequests[msg.id]) {
+            const request = pendingRequests[msg.id];
+            if (msg.error) {
+                request.reject(msg.error);
+            } else {
+                request.resolve(msg.result);
+            }
+            cleanupRequest(msg.id);
+        }
+        else if (msg.method === "notify") {
+            console.info("Notification");
+            process_notification(msg);
+        }
+    } catch (e) {
+        console.error("Error processing message:", e);
+    }
+};
+
 
 function handleWebSocketOpen() {
     console.log("WebSocket connected");

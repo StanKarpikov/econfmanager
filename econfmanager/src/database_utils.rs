@@ -300,7 +300,7 @@ impl DatabaseManager {
     fn db_to_string(sql_value: rusqlite::types::Value) -> Result<ParameterValue, Box<dyn Error>> {
         match sql_value {
             rusqlite::types::Value::Text(string) => {
-                Ok(ParameterValue::ValString(string))
+                Ok(ParameterValue::ValString(string.into()))
             },
             _ => {
                 return Err("".into());
@@ -403,7 +403,7 @@ impl DatabaseManager {
                 ParameterValue::ValU64(v) => v.to_sql()?,
                 ParameterValue::ValF32(v) => v.to_sql()?,
                 ParameterValue::ValF64(v) => v.to_sql()?,
-                ParameterValue::ValString(v) => v.as_str().to_sql()?,
+                ParameterValue::ValString(v) => v.to_sql()?,
                 ParameterValue::ValBlob(v) => v.to_sql()?,
                 // _ => 0.to_sql()?,
             },

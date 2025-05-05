@@ -9,15 +9,30 @@ void update_callback(ParameterId id, void* arg)
     CInterfaceInstance* interface = (CInterfaceInstance*)arg;
 
     printf("Parameter updated: %lu (arg: %p)\n", id, arg);
-    if(id == IMAGE_ACQUISITION_IMAGE_WIDTH)
+    switch(id)
     {
-        image_acquisition_image_width_t image_acquisition_image_width;
-        EconfStatus status = get_image_acquisition_image_width(interface, &image_acquisition_image_width);
-        if (status == StatusOk) {
-            printf("Image width update: %d\n", image_acquisition_image_width);
-        } else {
-            fprintf(stderr, "Failed to get image_acquisition_image_width\n");
-        }
+        case IMAGE_ACQUISITION_IMAGE_WIDTH:
+            {
+                image_acquisition_image_width_t image_acquisition_image_width;
+                EconfStatus status = get_image_acquisition_image_width(interface, &image_acquisition_image_width);
+                if (status == StatusOk) {
+                    printf("Image width update: %d\n", image_acquisition_image_width);
+                } else {
+                    fprintf(stderr, "Failed to get image_acquisition_image_width\n");
+                }
+            }
+            break;
+        case IMAGE_ACQUISITION_EXPOSURE:
+            {
+                image_acquisition_exposure_t image_acquisition_exposure;
+                EconfStatus status = get_image_acquisition_exposure(interface, &image_acquisition_exposure);
+                if (status == StatusOk) {
+                    printf("Exposure update: %0.2f\n", image_acquisition_exposure);
+                } else {
+                    fprintf(stderr, "Failed to get image_acquisition_exposure\n");
+                }
+            }
+            break;
     }
 }
 
@@ -38,7 +53,14 @@ int main(int argc, char *argv[]) {
 
     econf_add_callback(interface, IMAGE_ACQUISITION_IMAGE_WIDTH, update_callback, interface);
     if (status == StatusOk) {
-        printf("Callback added\n");
+        printf("Callback added for IMAGE_ACQUISITION_IMAGE_WIDTH\n");
+    } else {
+        fprintf(stderr, "Failed to add callback\n");
+    }
+
+    econf_add_callback(interface, IMAGE_ACQUISITION_EXPOSURE, update_callback, interface);
+    if (status == StatusOk) {
+        printf("Callback added for IMAGE_ACQUISITION_EXPOSURE\n");
     } else {
         fprintf(stderr, "Failed to add callback\n");
     }

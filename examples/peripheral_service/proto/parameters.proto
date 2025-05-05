@@ -18,11 +18,23 @@ message ImageAcquisition {
                             (options.default_value) = { val_int: 256 },
                             (options.comment) = "The height of the processed image"];
 
-    float exposure = 6 [(options.validation) = RANGE,
+    float exposure = 3 [(options.validation) = RANGE,
                         (options.min) = { val_float: 0.1 },
                         (options.max) = { val_float: 12.0 },
                         (options.default_value) = { val_float: 1.0 },
                         (options.comment) = "Exposure"];
+
+    bytes image = 4 [(options.runtime) = true,
+                     (options.comment) = "Image Data"];
+
+    bool generation_enabled = 5 [(options.comment) = "Enable generation"];
+
+    uint32 resolution = 6 [(options.validation) = ALLOWED_VALUES,
+                           (options.allowed_values) = { val_uint: 256 },
+                           (options.allowed_values) = { val_uint: 512 }, 
+                           (options.allowed_values) = { val_uint: 1024 },
+                           (options.default_value) = { val_uint: 256 },
+                           (options.comment) = "Resolution of the image processor"];
 }
 
 message Device {

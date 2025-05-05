@@ -105,6 +105,20 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].name_id.to_owned()
     }
 
+    pub fn value_to_string(value: &ParameterValue) -> String {
+        match value {
+            ParameterValue::ValBool(b) => b.to_string(),
+            ParameterValue::ValI32(i) => i.to_string(),
+            ParameterValue::ValU32(u) => u.to_string(),
+            ParameterValue::ValI64(i) => i.to_string(),
+            ParameterValue::ValU64(u) => u.to_string(),
+            ParameterValue::ValF32(f) => f.to_string(),
+            ParameterValue::ValF64(f) => f.to_string(),
+            ParameterValue::ValString(s) => s.to_string(),
+            ParameterValue::ValBlob(data) => BASE64_STANDARD.encode(data),
+        }
+    }
+
     pub fn set_from_string(&self, id: ParameterId, value: &str) -> Result<ParameterValue> {
         let param_type = &PARAMETER_DATA[id as usize].value;
         
@@ -154,7 +168,7 @@ impl InterfaceInstance {
             },
             
             ParameterValue::ValString(_) => {
-                ParameterValue::ValString(value.to_string())
+                ParameterValue::ValString(value.to_string().into())
             },
             
             ParameterValue::ValBlob(_) => {
@@ -171,50 +185,42 @@ impl InterfaceInstance {
     
         let converted_value = match param_type {
             ParameterValue::ValBool(_) => value
-                .as_bool()
-                .map(ParameterValue::ValBool)
-                .ok_or_else(|| anyhow!("Expected a boolean"))?,
-    
+                        .as_bool()
+                        .map(ParameterValue::ValBool)
+                        .ok_or_else(|| anyhow!("Expected a boolean"))?,
             ParameterValue::ValI32(_) => value
-                .as_i64()
-                .map(|v| ParameterValue::ValI32(v as i32))
-                .ok_or_else(|| anyhow!("Expected an integer"))?,
-    
+                        .as_i64()
+                        .map(|v| ParameterValue::ValI32(v as i32))
+                        .ok_or_else(|| anyhow!("Expected an integer"))?,
             ParameterValue::ValU32(_) => value
-                .as_u64()
-                .map(|v| ParameterValue::ValU32(v as u32))
-                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
-    
+                        .as_u64()
+                        .map(|v| ParameterValue::ValU32(v as u32))
+                        .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
             ParameterValue::ValI64(_) => value
-                .as_i64()
-                .map(ParameterValue::ValI64)
-                .ok_or_else(|| anyhow!("Expected an integer"))?,
-    
+                        .as_i64()
+                        .map(ParameterValue::ValI64)
+                        .ok_or_else(|| anyhow!("Expected an integer"))?,
             ParameterValue::ValU64(_) => value
-                .as_u64()
-                .map(ParameterValue::ValU64)
-                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
-    
+                        .as_u64()
+                        .map(ParameterValue::ValU64)
+                        .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
             ParameterValue::ValF32(_) => value
-                .as_f64()
-                .map(|v| ParameterValue::ValF32(v as f32))
-                .ok_or_else(|| anyhow!("Expected a float"))?,
-    
+                        .as_f64()
+                        .map(|v| ParameterValue::ValF32(v as f32))
+                        .ok_or_else(|| anyhow!("Expected a float"))?,
             ParameterValue::ValF64(_) => value
-                .as_f64()
-                .map(ParameterValue::ValF64)
-                .ok_or_else(|| anyhow!("Expected a float"))?,
-    
+                        .as_f64()
+                        .map(ParameterValue::ValF64)
+                        .ok_or_else(|| anyhow!("Expected a float"))?,
             ParameterValue::ValString(_) => value
-                .as_str()
-                .map(|v| ParameterValue::ValString(v.to_string()))
-                .ok_or_else(|| anyhow!("Expected a string"))?,
-    
+                        .as_str()
+                        .map(|v| ParameterValue::ValString(v.to_string().into()))
+                        .ok_or_else(|| anyhow!("Expected a string"))?,
             ParameterValue::ValBlob(_) => {
-                let base64_str = value.as_str().ok_or_else(|| anyhow!("Expected a base64 string"))?;
-                let decoded = BASE64_STANDARD.decode(base64_str)?;
-                ParameterValue::ValBlob(decoded)
-            }
+                        let base64_str = value.as_str().ok_or_else(|| anyhow!("Expected a base64 string"))?;
+                        let decoded = BASE64_STANDARD.decode(base64_str)?;
+                        ParameterValue::ValBlob(decoded)
+                    }
         };
     
         Ok(converted_value)

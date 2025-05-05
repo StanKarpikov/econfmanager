@@ -19,9 +19,10 @@ enum ValidationMethod {
 message ParameterValue {
     oneof value_type {
         int32 val_int = 1;
-        float val_float = 2;
-        string val_str = 3;
-        CustomType val_custom = 4;
+        uint32 val_uint = 2;
+        float val_float = 3;
+        string val_str = 4;
+        CustomType val_custom = 5;
     }
 }
 
@@ -35,4 +36,5 @@ extend google.protobuf.FieldOptions {
     ParameterValue default_value = 50007;
     bool is_const = 50008;
     repeated string tags = 50009;
+    bool runtime = 50010;
 }
