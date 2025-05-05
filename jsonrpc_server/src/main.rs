@@ -370,6 +370,15 @@ async fn handle_ws(ws: WebSocket, state: SharedState) {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct ParameterInfo {
+    id: usize,
+    name: String,
+    comment: String,
+    is_const: bool,
+    runtime: bool,
+}
+
 async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejection> {
     let app = state.lock().unwrap();
     let routes_json = ROUTES.iter().map(|r| {
@@ -379,8 +388,24 @@ async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejec
             "description": r.description
         })
     }).collect::<Vec<_>>();
+
+    let parameters: Vec<ParameterInfo> = app.names.iter()
+        .enumerate()
+        .map(|(idx, _)| {
+            let id = ParameterId::try_from(idx).unwrap();
+            ParameterInfo {
+                id: id as usize,
+                name: app.interface.get_name(id),
+                comment: app.interface.get_comment(id),
+                is_const: app.interface.get_is_const(id),
+                runtime: app.interface.get_runtime(id),
+            }
+        })
+        .collect();
+
+
     Ok(warp::reply::with_status(
-        json(&json!({"parameters": app.names, "routes": routes_json})),
+        json(&json!({"parameters": parameters, "routes": routes_json})),
         StatusCode::OK,
     ))
 }

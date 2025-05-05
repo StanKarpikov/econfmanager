@@ -105,6 +105,18 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].name_id.to_owned()
     }
 
+    pub fn get_comment(&self, id: ParameterId) -> String {
+        PARAMETER_DATA[id as usize].comment.to_owned()
+    }
+
+    pub fn get_is_const(&self, id: ParameterId) -> bool {
+        PARAMETER_DATA[id as usize].is_const
+    }
+
+    pub fn get_runtime(&self, id: ParameterId) -> bool {
+        PARAMETER_DATA[id as usize].runtime
+    }
+
     pub fn value_to_string(value: &ParameterValue) -> String {
         match value {
             ParameterValue::ValBool(b) => b.to_string(),

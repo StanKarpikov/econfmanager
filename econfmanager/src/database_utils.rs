@@ -55,7 +55,7 @@ impl DbConnection {
             let sql = format!(
                 "CREATE TABLE IF NOT EXISTS {} (
                     key INTEGER UNIQUE PRIMARY KEY,
-                    value REAL,
+                    value BLOB,
                     timestamp REAL
                 ) WITHOUT ROWID;",
                 TABLE_NAME
@@ -334,8 +334,8 @@ impl DatabaseManager {
         let parameter_def = &PARAMETER_DATA[id as usize];
         let key = parameter_def.name_id;
         let result = match stmt.query_row(params![key], |row| {
-            // Automatically detect SQLite's storage type
             let sql_value: rusqlite::types::Value = row.get(0)?;
+            let data_type = sql_value.data_type();
 
             let value_result = match parameter_def.value {
                 ParameterValue::ValBool(_) => Self::db_to_bool(sql_value),
@@ -345,14 +345,14 @@ impl DatabaseManager {
                 ParameterValue::ValU64(_) => Self::db_to_u64(sql_value),
                 ParameterValue::ValF32(_) => Self::db_to_f32(sql_value),
                 ParameterValue::ValF64(_) => Self::db_to_f64(sql_value),
-                ParameterValue::ValString(_) =>Self::db_to_string(sql_value),
+                ParameterValue::ValString(_) => Self::db_to_string(sql_value),
                 ParameterValue::ValBlob(_) => Self::db_to_blob(sql_value),
             };
             
             match value_result {
                 Ok(value) => Ok(value),
                 Err(_) => {
-                    warn!("Type mismatch for [{}], using default", key);
+                    warn!("Type mismatch for [{}], using default (SQL is {}, required is {})", key, data_type, parameter_def.value);
                     Ok(parameter_def.value.clone())
                 }
             }
@@ -379,11 +379,13 @@ impl DatabaseManager {
         if !force {
             match self.read_or_create(id){
                 Ok(current ) => if current == value {
+                    debug!("Values are equal, skip writing");
                     return Ok(Status::StatusOkNotChanged(value));
                 }
                 Err(e) => error!("Error reading current value: {}", e)
             };
         }
+        debug!("Write to DB: {}", value);
         
         let db = DbConnection::new(&self.database_path, true, false)?;
         
@@ -391,7 +393,6 @@ impl DatabaseManager {
         
         let mut stmt = db.conn.as_ref().unwrap().prepare(&sql)?;
         
-        // Bind parameters
         let parameter_def = &PARAMETER_DATA[id as usize];
         stmt.execute(params![
             parameter_def.name_id,
