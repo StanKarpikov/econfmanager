@@ -1,4 +1,7 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use base64::prelude::*;
@@ -14,7 +17,6 @@ use crate::notifier::Notifier;
 use crate::schema::ParameterValue;
 
 use generated::{GROUPS_DATA, PARAMETER_DATA, PARAMETERS_NUM, ParameterId};
-use timer::Guard;
 
 pub type ParameterUpdateCallback = Arc<dyn Fn(ParameterId) + Send + Sync + 'static>;
 
@@ -41,11 +43,12 @@ impl SharedRuntimeData {
 
 #[derive(Default)]
 pub struct InterfaceInstance {
-    database: DatabaseManager,
+    database: Arc<Mutex<DatabaseManager>>,
     notifier: Notifier,
     runtime_data: Arc<Mutex<SharedRuntimeData>>,
-    event_receiver: EventReceiver,
-    pub(crate) poll_timer_guard: Option<Guard>,
+    event_receiver: Arc<Mutex<EventReceiver>>,
+    timer_thread: Option<thread::JoinHandle<()>>,
+    stop_flag: Arc<AtomicBool>,
 }
 
 impl InterfaceInstance {
@@ -55,10 +58,10 @@ impl InterfaceInstance {
         default_data_folder: &String,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let config = Config::new(database_path, saved_database_path, default_data_folder)?;
-        let database = DatabaseManager::new(&config)?;
+        let database = Arc::new(Mutex::new(DatabaseManager::new(&config)?));
         let runtime_data = Arc::new(Mutex::new(SharedRuntimeData::new()?));
         let notifier = Notifier::new()?;
-        let event_receiver = EventReceiver::new(runtime_data.clone())?;
+        let event_receiver = Arc::new(Mutex::new(EventReceiver::new(runtime_data.clone())?));
         info!(
             "Interface created: {} {}",
             &config.database_path, &config.saved_database_path
@@ -68,7 +71,8 @@ impl InterfaceInstance {
             notifier,
             runtime_data,
             event_receiver,
-            poll_timer_guard: None,
+            timer_thread: None,
+            stop_flag: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -87,7 +91,7 @@ impl InterfaceInstance {
             );
             return Ok(value);
         } else {
-            let value = self.database.read_or_create(id)?;
+            let value = self.database.lock().unwrap().read_or_create(id)?;
             debug!(
                 "Get parameter {}:[{}]: {}",
                 index, PARAMETER_DATA[index].name_id, value
@@ -103,7 +107,7 @@ impl InterfaceInstance {
         parameter: ParameterValue,
     ) -> Result<ParameterValue, Box<dyn std::error::Error>> {
         let index: usize = id as usize;
-        let result = self.database.write(id, parameter, false);
+        let result = self.database.lock().unwrap().write(id, parameter, false);
         let value = match result {
             Ok(status) => match status {
                 Status::StatusOkChanged(value)
@@ -319,11 +323,59 @@ impl InterfaceInstance {
     }
 
     pub fn update(&mut self) -> Result<Vec<ParameterId>, Box<dyn std::error::Error>> {
-        let pending_callbacks = self.database.update()?;
+        info!("Update called");
+        let pending_callbacks = self.database.lock().unwrap().update()?;
         for id in &pending_callbacks {
-            self.event_receiver.notify_callback(*id);
+            self.event_receiver.lock().unwrap().notify_callback(*id);
         }
         Ok(pending_callbacks)
+    }
+
+    pub fn start_periodic_update(&mut self, interval: Duration) {
+        self.stop_periodic_update();
+
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        self.stop_flag = stop_flag.clone();
+
+        let shared_database = self.database.clone();
+        let shared_event_receiver = self.event_receiver.clone();
+        
+        let handle = thread::spawn(move || {
+            loop {
+                if stop_flag.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                let pending_callbacks = 
+                {
+                    debug!("Timer update");
+                    let mut database = shared_database.lock().unwrap();
+                    database.update()
+                };
+
+                match pending_callbacks {
+                    Ok(pending_callbacks) =>
+                        for id in &pending_callbacks {
+                            shared_event_receiver.lock().unwrap().notify_callback(*id);
+                        },
+                    Err(e) => error!("Timer update failed: {}", e)
+                }
+
+                thread::sleep(interval);
+            }
+        });
+
+        self.timer_thread = Some(handle);
+    }
+
+    pub fn stop_periodic_update(&mut self) {
+        if let Some(flag) = Arc::get_mut(&mut self.stop_flag) {
+            flag.store(true, Ordering::Relaxed);
+        }
+        
+        if let Some(handle) = self.timer_thread.take() {
+            let _ = handle.join();
+        }
     }
 
     pub fn add_callback(
@@ -366,12 +418,12 @@ impl InterfaceInstance {
     }
 
     pub fn load(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.database.load_database()?;
+        self.database.lock().unwrap().load_database()?;
         self.notify_all_force()
     }
 
     pub fn factory_reset(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.database.drop_database()?;
+        self.database.lock().unwrap().drop_database()?;
         self.notify_all_force()
     }
 
@@ -393,6 +445,12 @@ impl InterfaceInstance {
                 })
                 .unwrap_or(false)
         };
-        self.database.save_database(&filter)
+        self.database.lock().unwrap().save_database(&filter)
+    }
+}
+
+impl Drop for InterfaceInstance {
+    fn drop(&mut self) {
+        self.stop_periodic_update();
     }
 }

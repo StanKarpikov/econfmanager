@@ -43,6 +43,7 @@ int main(int argc, char *argv[]) {
     status = econf_init(
         "parameters.db",
         "saved_parameters.db",
+        "default_data",
         &interface
     );
     
@@ -50,6 +51,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to initialize configuration manager\n");
         return EXIT_FAILURE;
     }
+
+    econf_set_up_timer_poll(interface, 5000);
 
     econf_add_callback(interface, IMAGE_ACQUISITION_IMAGE_WIDTH, update_callback, interface);
     if (status == StatusOk) {

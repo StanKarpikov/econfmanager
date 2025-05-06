@@ -28,14 +28,11 @@ use std::time::Duration;
 use env_logger::Env;
 use lib_helper_functions::interface_execute;
 use log::error;
-use timer::Timer;
 use log::info;
 use parking_lot::Mutex;
 use std::{ffi::{c_char, CString}, ptr, sync::Arc};
 use interface::InterfaceInstance;
 use generated::ParameterId;
-
-const LOCK_TRYING_DURATION: Duration = Duration::from_secs(1);
 
 #[repr(C)]
 pub enum EconfStatus {
@@ -199,28 +196,8 @@ pub extern "C" fn econf_update_poll(interface: *const CInterfaceInstance) -> Eco
 
 #[unsafe(no_mangle)]
 pub extern "C" fn econf_set_up_timer_poll(interface: *const CInterfaceInstance, timer_period_ms: i64) -> EconfStatus {
-    let arc_interface = match unsafe { &*interface }.get_arc(){
-        Ok(value) => value,
-        Err(_) => return EconfStatus::StatusError
-    };
     interface_execute(interface, |interface_guard| {
-        let timer = Timer::new();
-        interface_guard.poll_timer_guard = Some(timer.schedule_repeating(
-            chrono::Duration::milliseconds(timer_period_ms),
-            move || {
-                let mut guard = match arc_interface.try_lock_for(LOCK_TRYING_DURATION) {
-                    Some(g) => g,
-                    None => {
-                        error!("Failed to acquire lock in timer callback");
-                        return;
-                    }
-                };
-
-                if let Err(e) = guard.update() {
-                    error!("Timer update failed: {}", e);
-                }
-            },
-        ));
+        interface_guard.start_periodic_update(Duration::from_millis(timer_period_ms.try_into().unwrap()));
         Ok(())
     })
 }
@@ -228,12 +205,8 @@ pub extern "C" fn econf_set_up_timer_poll(interface: *const CInterfaceInstance, 
 #[unsafe(no_mangle)]
 pub extern "C" fn econf_stop_timer_poll(interface: *const CInterfaceInstance) -> EconfStatus {
     interface_execute(interface, |interface| {
-        if let Some(guard) = interface.poll_timer_guard.take() {
-            drop(guard);
-            Ok(())
-        } else {
-            Err("No active timer to stop".into())
-        }
+        interface.stop_periodic_update();
+        Ok(())
     })
 }
 

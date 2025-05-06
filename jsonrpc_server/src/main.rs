@@ -6,6 +6,7 @@ use econfmanager::generated::ParameterId;
 use env_logger::Env;
 use serde::{Deserialize, Serialize};
 use warp::Rejection;
+use std::time::Duration;
 use std::{net::SocketAddr, sync::{Arc, Mutex}};
 use warp::{Filter, ws::{Message, WebSocket}};
 use futures::{SinkExt, StreamExt};
@@ -19,6 +20,7 @@ pub mod arguments;
 pub mod configfile;
 
 const SERVE_STATIC_FILES: bool = true;
+const PERIODIC_UPDATE_INTERVAL: Duration = Duration::from_millis(5000);
 
 #[derive(Clone)]
 struct RouteInfo {
@@ -72,7 +74,7 @@ type SharedState = Arc<Mutex<AppState>>;
 
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
     .format(|buf, record| {
         writeln!(
             buf,
@@ -89,7 +91,8 @@ async fn main() {
     let args = Args::parse();
     let config = Config::from_file(args.config);
 
-    let interface_instance = InterfaceInstance::new(&config.database_path, &config.saved_database_path, &config.default_data_folder).unwrap();
+    let mut interface_instance = InterfaceInstance::new(&config.database_path, &config.saved_database_path, &config.default_data_folder).unwrap();
+    interface_instance.start_periodic_update(PERIODIC_UPDATE_INTERVAL);
     let parameter_names = interface_instance.get_parameter_names();
     
     let state = Arc::new(Mutex::new(AppState {
