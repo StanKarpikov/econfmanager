@@ -1,5 +1,5 @@
 use std::{error::Error, fmt, fs, path::Path, time::{SystemTime, UNIX_EPOCH}};
-use rusqlite::{backup::Backup, params, Connection, OpenFlags, ToSql};
+use rusqlite::{backup::Backup, params, Connection, OpenFlags, Row, ToSql, NO_PARAMS};
 use std::time::Duration;
 
 #[allow(unused_imports)]
@@ -143,6 +143,48 @@ impl DatabaseManager {
         Ok(backup.run_to_completion(100, Duration::from_millis(250), None)?)
     }
 
+    fn copy_database_with_filter(
+        source_path: &Path,
+        backup_path: &Path,
+        filter: &dyn Fn(&String) -> bool,
+    ) -> Result<(), Box<dyn Error>> {
+        let src_conn = Connection::open(source_path)?;
+        let dst_conn = Connection::open(backup_path)?;
+
+        dst_conn.execute(
+            &format!(
+                "CREATE TABLE IF NOT EXISTS {} (
+                    key INTEGER UNIQUE PRIMARY KEY,
+                    value BLOB,
+                    timestamp REAL
+                ) WITHOUT ROWID;",
+                TABLE_NAME
+            ),
+            [],
+        )?;
+
+        let mut src_stmt = src_conn.prepare(&format!("SELECT key, value, timestamp FROM {}", TABLE_NAME))?;
+        let mut rows = src_stmt.query([])?;
+        
+        let mut dst_stmt = dst_conn.prepare(
+            &format!(
+                "INSERT INTO {} (key, value) VALUES (?1, ?2, ?3)",
+                TABLE_NAME
+            ),
+        )?;
+
+        while let Some(row) = rows.next()? {
+            let key = row.get(1).unwrap_or("".to_string());
+            if filter(&key) {
+                let value: Vec<u8> = row.get(1)?;
+                let timestamp: f64 = 0.0;
+                dst_stmt.execute(params![key, value, timestamp])?;
+            }
+        }
+
+        Ok(())
+    }
+
     /******************************************************************************
      * PUBLIC FUNCTIONS
      ******************************************************************************/
@@ -152,9 +194,14 @@ impl DatabaseManager {
         Self::copy_database(Path::new(&self.saved_database_path), Path::new(&self.database_path))
     }
 
-    pub(crate) fn save_database(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) fn save_database(&self, filter: &dyn Fn(&String) -> bool) -> Result<(), Box<dyn std::error::Error>> {
         info!("Saving database");
-        Self::copy_database(Path::new(&self.database_path), Path::new(&self.saved_database_path))
+        Self::copy_database_with_filter(
+            Path::new(&self.database_path),
+            Path::new(&self.saved_database_path),
+            &filter,
+        )?;
+        Ok(())
     }
 
     pub(crate) fn new(config: &Config) -> Result<Self, Box<dyn std::error::Error>> {

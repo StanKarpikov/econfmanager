@@ -291,7 +291,15 @@ impl InterfaceInstance {
     }
 
     pub fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.database.save_database()
+        let filter = |key: &String| {
+            PARAMETER_DATA
+                .iter()
+                .enumerate()
+                .find(|(_, parameter)| parameter.name_id.to_string() == *key)
+                .and_then(|(id, _)| Some(!PARAMETER_DATA[id].runtime))
+                .unwrap_or(false)
+        };
+        self.database.save_database(&filter)
     }
 
 }
