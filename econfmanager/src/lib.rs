@@ -192,7 +192,8 @@ pub extern "C" fn econf_delete_callback(interface: *const CInterfaceInstance, id
 #[unsafe(no_mangle)]
 pub extern "C" fn econf_update_poll(interface: *const CInterfaceInstance) -> EconfStatus {
     interface_execute(interface, |interface| {
-        interface.update()
+        let _ = interface.update();
+        Ok(())
     })
 }
 

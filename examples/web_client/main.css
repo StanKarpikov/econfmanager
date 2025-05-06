@@ -115,3 +115,12 @@ input[type="number"], input[type="text"] {
     padding: 4px;
     display: inline-block;
 }
+
+button {
+    padding: 8px 15px; 
+    background-color: #4CAF50; 
+    color: white; 
+    border: none; 
+    border-radius: 4px; 
+    cursor: pointer;
+}

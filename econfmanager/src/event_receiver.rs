@@ -11,7 +11,7 @@ use crate::generated::ParameterId;
 use crate::interface::SharedRuntimeData;
 use crate::services::ParameterNotification;
 
-#[derive (Clone)]
+#[derive (Clone, Default)]
 pub(crate) struct EventReceiver {
     runtime_data: Arc<Mutex<SharedRuntimeData>>
 }

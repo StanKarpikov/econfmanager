@@ -27,6 +27,15 @@ struct RouteInfo {
     description: String,
 }
 
+fn debug_limited(msg: &String, max_len: usize) {
+    let truncated = if msg.len() > max_len {
+        &msg[..max_len]
+    } else {
+        &msg
+    };
+    debug!("{}", truncated);
+}
+
 lazy_static::lazy_static! {
     static ref ROUTES: Vec<RouteInfo> = vec![
         RouteInfo {
@@ -63,7 +72,7 @@ type SharedState = Arc<Mutex<AppState>>;
 
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
     .format(|buf, record| {
         writeln!(
             buf,
@@ -166,7 +175,7 @@ fn notify_client(app: &mut AppState, id: ParameterId) {
     })
     .to_string();
 
-    debug!("Notify subscribers for ID {} {}: {}", id as usize, parameter_name, notification);
+    debug_limited(&format!("Notify subscribers for ID {} {}: {}", id as usize, parameter_name, notification), 100);
     for tx in app.subscribers[id as usize].clone() {
         match tx.send(Message::text(notification.clone())) {
             Ok(_) => {},
@@ -228,7 +237,7 @@ fn handle_rpc_logic_ws(
         }
 
         "write" => {
-            debug!("Got write request {:?}", req.params);
+            debug_limited(&format!("Got write request {:?}", req.params), 100);
             let params = req.params.as_ref().ok_or_else(|| {
                 let msg = "Missing parameters";
                 error!("{}", msg);
@@ -320,7 +329,7 @@ async fn handle_ws(ws: WebSocket, state: SharedState) {
 
     let mut forward_task = tokio::task::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            debug!("Send message {:?}", msg);
+            debug_limited(&format!("Send message {:?}", msg), 100);
             if client_ws_tx.send(msg).await.is_err() {
                 break; // Exit if send fails (connection closed)
             }
@@ -332,7 +341,7 @@ async fn handle_ws(ws: WebSocket, state: SharedState) {
     while connection_active {
         tokio::select! {
             msg = client_ws_rx.next() => {
-                debug!("Received message {:?}", msg);
+                debug_limited(&format!("Received message {:?}", msg), 100);
                 match msg {
                     Some(Ok(msg)) => {
                         if msg.is_text() {

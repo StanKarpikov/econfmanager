@@ -60,3 +60,15 @@ async function readAllParameters() {
         });
     }
 }
+
+async function parameters_save() {
+    await sendRpc("save", {});
+}
+
+async function parameters_restore() {
+    await sendRpc("restore", {});
+}
+
+async function parameters_factory_reset() {
+    await sendRpc("factory_reset", {});
+}

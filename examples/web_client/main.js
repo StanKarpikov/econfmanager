@@ -2,8 +2,8 @@
  * CONSTANTS
  ******************************************************************************/
 
-const SERVER_ADDRESS = "localhost:3031";
-// const SERVER_ADDRESS = location.host;
+// const SERVER_ADDRESS = "localhost:3031";
+const SERVER_ADDRESS = location.host;
 const WEBSOCKET_ADDRESS = `ws://${SERVER_ADDRESS}/api_ws`;
 const REQUEST_TIMEOUT = 5000;
 const MAX_RECONNECT_ATTEMPTS = 10;

@@ -23,8 +23,16 @@
 
     </div>
 
-    <button id="save_btn" style="padding: 8px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    <button id="save_btn" onclick="parameters_save()">
         Save Configuration
+    </button>
+
+    <button id="restore_btn" onclick="parameters_restore()">
+        Restore Configuration
+    </button>
+
+    <button id="factory_reset_btn" onclick="parameters_factory_reset()">
+        Factory Reset
     </button>
 
     <script src="jrpc.js"></script>
