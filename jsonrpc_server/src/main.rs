@@ -18,6 +18,8 @@ use serde_json::json;
 pub mod arguments;
 pub mod configfile;
 
+const SERVE_STATIC_FILES: bool = true;
+
 #[derive(Clone)]
 struct RouteInfo {
     path: String,
@@ -61,7 +63,7 @@ type SharedState = Arc<Mutex<AppState>>;
 
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
     .format(|buf, record| {
         writeln!(
             buf,
@@ -78,7 +80,7 @@ async fn main() {
     let args = Args::parse();
     let config = Config::from_file(args.config);
 
-    let interface_instance = InterfaceInstance::new(&config.database_path, &config.saved_database_path).unwrap();
+    let interface_instance = InterfaceInstance::new(&config.database_path, &config.saved_database_path, &config.default_data_folder).unwrap();
     let parameter_names = interface_instance.get_parameter_names();
     
     let state = Arc::new(Mutex::new(AppState {
@@ -114,8 +116,6 @@ async fn main() {
         .and(warp::body::bytes())
         .and(state_filter.clone())
         .and_then(handle_write_param);
-        
-    let routes = ws.or(read_param).or(write_param).or(info);
 
     let addr_str = format!("{}:{}", config.json_rpc_listen_address, config.json_rpc_port);
     let socket_addr: SocketAddr = addr_str
@@ -123,7 +123,16 @@ async fn main() {
         .expect("Failed to parse json_rpc_listen_address and json_rpc_port");
 
     info!("Listening on http://{}", socket_addr);
-    warp::serve(routes).run(socket_addr).await;
+
+    let api_routes = ws.or(read_param).or(write_param).or(info);
+    if SERVE_STATIC_FILES {
+        let static_files = warp::fs::dir("../examples/web_client");        
+        let api_routes = api_routes.or(static_files);
+        warp::serve(api_routes).run(socket_addr).await;
+    }
+    else {
+        warp::serve(api_routes).run(socket_addr).await;
+    }
 }
 
 #[derive(Deserialize)]
@@ -254,9 +263,19 @@ fn handle_rpc_logic_ws(
                     msg
                 })?;
 
-            let converted = app.interface.set_from_string(parameter_id, value.as_str().unwrap())
+            let value_string = match value {
+                serde_json::Value::Null => value.to_string(),
+                serde_json::Value::Bool(_) => value.to_string(),
+                serde_json::Value::Number(_) => value.to_string(),
+                serde_json::Value::String(_) => value.as_str().unwrap().to_owned(),
+                serde_json::Value::Array(_) => value.to_string(),
+                serde_json::Value::Object(_) => value.to_string(),
+            };
+            let converted = app.interface.set_from_string(parameter_id, &value_string)
                 .map_err(|e| {
-                    let msg = format!("Unsupported type of |{}| id {} {}: {}", value, parameter_id as usize, name, e);
+                    let max_len = 32;
+                    let truncated_value: String = value_string.chars().take(max_len).collect();
+                    let msg = format!("Unsupported type of |{}| id {} {}: {}", truncated_value, parameter_id as usize, name, e);
                     error!("{}", msg);
                     msg
                 })?;
@@ -280,6 +299,13 @@ fn handle_rpc_logic_ws(
                 .map_err(|e| format!("Could not restore: {}", e))?;
             Ok(serde_json::json!({ "status": "restored" }))
         }
+
+        "factory_reset" => {
+            debug!("Got factory reset request");
+            app.interface.factory_reset()
+                .map_err(|e| format!("Could not do a factory reset: {}", e))?;
+            Ok(serde_json::json!({ "status": "reset done" }))
+        },
 
         _ => Err("Unknown method".into()),
     }
@@ -375,8 +401,18 @@ struct ParameterInfo {
     id: usize,
     name: String,
     comment: String,
+    title: String,
     is_const: bool,
     runtime: bool,
+    group: String,
+    parameter_type: String,
+}
+
+#[derive(Debug, Serialize)]
+struct GroupInfo {
+    comment: String,
+    title: String,
+    name: String,
 }
 
 async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejection> {
@@ -397,15 +433,28 @@ async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejec
                 id: id as usize,
                 name: app.interface.get_name(id),
                 comment: app.interface.get_comment(id),
+                title: app.interface.get_title(id),
+                parameter_type: app.interface.get_type_string(id),
                 is_const: app.interface.get_is_const(id),
                 runtime: app.interface.get_runtime(id),
+                group: app.interface.get_group(id),
             }
         })
         .collect();
 
+    let group_parameters = app.interface.get_groups();
+    let groups: Vec<GroupInfo> = group_parameters.iter()
+        .map(|(name, title, comment)| {
+            GroupInfo {
+                name: name.to_string(),
+                comment: comment.to_string(),
+                title: title.to_string(),
+            }
+        })
+        .collect();
 
     Ok(warp::reply::with_status(
-        json(&json!({"parameters": parameters, "routes": routes_json})),
+        json(&json!({"parameters": parameters, "group": groups, "routes": routes_json})),
         StatusCode::OK,
     ))
 }

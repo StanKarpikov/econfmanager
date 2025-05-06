@@ -1,0 +1,117 @@
+body {
+    font-family: Arial, sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+h1 {
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+.section {
+    margin-bottom: 30px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+.section h2 {
+    margin-top: 0;
+    color: #444;
+}
+.param-group {
+    margin-bottom: 15px;
+}
+label {
+    display: inline-block;
+    width: 200px;
+    font-weight: bold;
+    margin-right: 10px;
+}
+input[type="number"], input[type="text"] {
+    padding: 5px;
+    width: 200px;
+}
+.comment {
+    color: #666;
+    font-style: italic;
+    margin-left: 210px;
+    margin-top: 5px;
+    font-size: 0.9em;
+}
+
+/* Connection status panel */
+#connection-panel {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    width: 250px;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+#connection-status {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+#status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    background: #ccc;
+}
+#status-indicator.connected {
+    background: #4CAF50;
+    box-shadow: 0 0 5px #4CAF50;
+}
+#status-indicator.disconnected {
+    background: #f44336;
+}
+#status-indicator.connecting {
+    background: #FFC107;
+    animation: pulse 1.5s infinite;
+}
+#connection-events {
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.8em;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+}
+.event {
+    margin-bottom: 5px;
+    padding-bottom: 5px;
+    border-bottom: 1px dashed #eee;
+}
+.event-time {
+    color: #666;
+    font-size: 0.8em;
+    margin-right: 5px;
+}
+.event-message {
+    word-break: break-word;
+}
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+.blob-parameter {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.blob-info {
+    font-size: 0.9em;
+    color: #666;
+}
+.image-preview {
+    margin-top: 8px;
+    border: 1px solid #ddd;
+    padding: 4px;
+    display: inline-block;
+}

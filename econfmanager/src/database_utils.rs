@@ -1,11 +1,11 @@
-use std::{error::Error, fmt, fs, path::Path, time::{SystemTime, UNIX_EPOCH}};
-use rusqlite::{backup::Backup, params, Connection, OpenFlags, Row, ToSql, NO_PARAMS};
+use std::{error::Error, fmt, fs, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
+use rusqlite::{backup::Backup, params, Connection, OpenFlags, ToSql};
 use std::time::Duration;
 
 #[allow(unused_imports)]
 use log::{debug, info, warn, error};
 
-use crate::{config::Config, generated::{ParameterId, PARAMETER_DATA}, schema::ParameterValue};
+use crate::{config::Config, generated::{ParameterId, PARAMETER_DATA}, schema::{Parameter, ParameterValue}};
 
 const TABLE_NAME: &str = "parameters";
 
@@ -13,6 +13,7 @@ const TABLE_NAME: &str = "parameters";
 pub(crate) struct DatabaseManager {
     database_path: String,
     saved_database_path: String,
+    default_data_folder: String,
     last_update_timestamp: f64
 }
 
@@ -44,14 +45,6 @@ impl DbConnection {
         debug!("> DB connection opened with flags {:?}", flags);
 
         if create_required {
-            conn.pragma_update(None, "locking_mode", "NORMAL")?;
-            conn.pragma_update(None, "journal_mode", "WAL")?;
-        
-            // TODO: Optional: needs testing
-            conn.pragma_update(None, "wal_autocheckpoint", "1000")?;  // Pages
-            conn.pragma_update(None, "synchronous", "NORMAL")?;
-            conn.pragma_update(None, "busy_timeout", "10000")?;  // 10 second timeout
-
             let sql = format!(
                 "CREATE TABLE IF NOT EXISTS {} (
                     key INTEGER UNIQUE PRIMARY KEY,
@@ -63,6 +56,18 @@ impl DbConnection {
             let tx = conn.transaction()?;
             tx.execute_batch(&sql)?;
             tx.commit()?;
+            
+            conn.pragma_update(None, "locking_mode", "NORMAL")?;
+            conn.pragma_update(None, "journal_mode", "WAL")?;
+        
+            // TODO: Optional: needs testing
+            // conn.execute_batch(&format!("PRAGMA auto_vacuum = {};", "INCREMENTAL"))?;
+            conn.execute("VACUUM", [])?;
+
+            conn.pragma_update(None, "wal_autocheckpoint", "1000")?;  // Pages
+            conn.pragma_update(None, "synchronous", "NORMAL")?;
+            conn.pragma_update(None, "busy_timeout", "10000")?;  // 10 second timeout
+
 
             info!("Parameters database created");
         }
@@ -189,6 +194,23 @@ impl DatabaseManager {
      * PUBLIC FUNCTIONS
      ******************************************************************************/
 
+    pub(crate) fn drop_database(&self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Deleting database");
+        let db = DbConnection::new(&self.database_path, false, false)?;
+        
+        db.conn().execute(
+            &format!(
+                "DROP TABLE {};",
+                TABLE_NAME
+            ),
+            [],
+        )?;
+
+        db.conn().execute("VACUUM", [])?;
+
+        Ok(())
+    }
+
     pub(crate) fn load_database(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Loading database");
         Self::copy_database(Path::new(&self.saved_database_path), Path::new(&self.database_path))
@@ -208,7 +230,8 @@ impl DatabaseManager {
         let database_manager = Self { 
             database_path: config.database_path.clone(), 
             saved_database_path: config.saved_database_path.clone(),
-            last_update_timestamp: 0.0 
+            last_update_timestamp: 0.0,
+            default_data_folder: config.default_data_folder.clone(), 
         };
 
         match fs::metadata(&database_manager.database_path) {
@@ -365,6 +388,21 @@ impl DatabaseManager {
             },
         }
     }
+    
+    fn get_default_value(&self, parameter_def: &Parameter) -> Result<ParameterValue, rusqlite::Error> {
+        match parameter_def.value_default {
+            ParameterValue::ValPath(p) => {
+                let full_path = PathBuf::from(self.default_data_folder.clone()).join(p);
+                let bytes = fs::read(full_path).map_err(|e| {
+                    let err = format!("Error reading file {} with default data: {}", p, e);
+                    error!("{}", err);
+                    err
+                }).unwrap_or(vec![]);
+                Ok(ParameterValue::ValBlob(bytes))
+            },
+            _ => Ok(parameter_def.value_default.clone())
+        }
+    }
 
     pub(crate) fn read_or_create(&self, id: ParameterId) -> Result<ParameterValue, Box<dyn Error>> {
         let db = DbConnection::new(&self.database_path, false, false)?;
@@ -384,7 +422,7 @@ impl DatabaseManager {
             let sql_value: rusqlite::types::Value = row.get(0)?;
             let data_type = sql_value.data_type();
 
-            let value_result = match parameter_def.value {
+            let value_result = match parameter_def.value_type {
                 ParameterValue::ValBool(_) => Self::db_to_bool(sql_value),
                 ParameterValue::ValI32(_) => Self::db_to_i32(sql_value),
                 ParameterValue::ValU32(_) => Self::db_to_u32(sql_value),
@@ -394,23 +432,24 @@ impl DatabaseManager {
                 ParameterValue::ValF64(_) => Self::db_to_f64(sql_value),
                 ParameterValue::ValString(_) => Self::db_to_string(sql_value),
                 ParameterValue::ValBlob(_) => Self::db_to_blob(sql_value),
+                ParameterValue::ValPath(_) => todo!(),
             };
-            
+
             match value_result {
                 Ok(value) => Ok(value),
                 Err(_) => {
-                    warn!("Type mismatch for [{}], using default (SQL is {}, required is {})", key, data_type, parameter_def.value);
-                    Ok(parameter_def.value.clone())
+                    warn!("Type mismatch for [{}], using default (SQL is {}, required is {})", key, data_type, parameter_def.value_type);
+                    self.get_default_value(parameter_def)
                 }
             }
         }) {
             Ok(val) => Ok(val),
             Err(e) => {
-                error!("Error reading parameter: {}", e);
-                Ok(parameter_def.value.clone())
+                error!("Error reading parameter {}: {}", key, e);
+                self.get_default_value(parameter_def)
             }
         };
-        result
+        Ok(result?)
     }
 
     pub fn write(
@@ -444,16 +483,16 @@ impl DatabaseManager {
         stmt.execute(params![
             parameter_def.name_id,
             match &value {
-                ParameterValue::ValBool(v) => v.to_sql()?,
-                ParameterValue::ValI32(v) => v.to_sql()?,
-                ParameterValue::ValU32(v) => v.to_sql()?,
-                ParameterValue::ValI64(v) => v.to_sql()?,
-                ParameterValue::ValU64(v) => v.to_sql()?,
-                ParameterValue::ValF32(v) => v.to_sql()?,
-                ParameterValue::ValF64(v) => v.to_sql()?,
-                ParameterValue::ValString(v) => v.to_sql()?,
-                ParameterValue::ValBlob(v) => v.to_sql()?,
-                // _ => 0.to_sql()?,
+                ParameterValue::ValBool(v)=>v.to_sql()?,
+                ParameterValue::ValI32(v)=>v.to_sql()?,
+                ParameterValue::ValU32(v)=>v.to_sql()?,
+                ParameterValue::ValI64(v)=>v.to_sql()?,
+                ParameterValue::ValU64(v)=>v.to_sql()?,
+                ParameterValue::ValF32(v)=>v.to_sql()?,
+                ParameterValue::ValF64(v)=>v.to_sql()?,
+                ParameterValue::ValString(v)=>v.to_sql()?,
+                ParameterValue::ValBlob(v)=>v.to_sql()?,
+                ParameterValue::ValPath(_) => todo!(),
             },
             Self::get_timestamp(),
         ])?;

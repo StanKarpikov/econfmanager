@@ -105,6 +105,7 @@ impl Drop for CInterfaceInstance {
 pub extern "C" fn econf_init(
         database_path: *const std::os::raw::c_char,
         saved_database_path: *const std::os::raw::c_char,
+        default_data_folder: *const std::os::raw::c_char,
         interface: *mut *mut CInterfaceInstance
     ) -> EconfStatus {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
@@ -123,8 +124,9 @@ pub extern "C" fn econf_init(
 
     let database_path = unsafe { std::ffi::CStr::from_ptr(database_path).to_string_lossy().into_owned() };
     let saved_database_path = unsafe { std::ffi::CStr::from_ptr(saved_database_path).to_string_lossy().into_owned() };
+    let default_data_folder = unsafe { std::ffi::CStr::from_ptr(default_data_folder).to_string_lossy().into_owned() };
 
-    let r_instance = match InterfaceInstance::new(&database_path, &saved_database_path) {
+    let r_instance = match InterfaceInstance::new(&database_path, &saved_database_path, &default_data_folder) {
         Ok(value) => value,
         Err(_) => return EconfStatus::StatusError,
     };

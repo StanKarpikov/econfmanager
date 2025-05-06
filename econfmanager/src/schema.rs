@@ -1,4 +1,5 @@
 use std::{borrow::Cow, error::Error, fmt, mem};
+use base64::{prelude::BASE64_STANDARD, Engine};
 use prost_reflect::{DescriptorPool, DynamicMessage, FileDescriptor, MessageDescriptor, ReflectMessage, Value};
 use serde::ser::{Serialize, Serializer};
 
@@ -19,6 +20,7 @@ pub enum ParameterValue {
     ValF64(f64),
     ValString(Cow<'static, str>),
     ValBlob(Vec<u8>),
+    ValPath(&'static str),
 }
 
 impl Serialize for ParameterValue {
@@ -35,8 +37,11 @@ impl Serialize for ParameterValue {
             ParameterValue::ValF32(v) => v.serialize(serializer),
             ParameterValue::ValF64(v) => v.serialize(serializer),
             ParameterValue::ValString(v) => v.serialize(serializer),
-            ParameterValue::ValBlob(v) => v.serialize(serializer),
-            // ParameterValue::ValStaticString(v) => v.serialize(serializer),
+            ParameterValue::ValBlob(v) => {
+                let encoded = BASE64_STANDARD.encode(v);
+                encoded.serialize(serializer)
+            },
+            ParameterValue::ValPath(_) => todo!(),
         }
     }
 }
@@ -52,18 +57,18 @@ impl fmt::Display for ParameterValue {
             ParameterValue::ValF32(v) => write!(f, "F32: {:+.4e}", v),
             ParameterValue::ValF64(v) => write!(f, "F64: {:+.4e}", v),
             ParameterValue::ValString(v) => write!(f, "String: {}", v),
-            // ParameterValue::ValStaticString(v) => write!(f, "String: {}", v),
             ParameterValue::ValBlob(v) => {
-                        let display_len = std::cmp::min(8, v.len());
-                        write!(f, "[")?;
-                        for byte in &v[..display_len] {
-                            write!(f, "{:02X} ", byte)?;
-                        }
-                        if v.len() > display_len {
-                            write!(f, "... ({} bytes)", v.len())?;
-                        }
-                        write!(f, "]")
-                    }
+                                let display_len = std::cmp::min(8, v.len());
+                                write!(f, "[")?;
+                                for byte in &v[..display_len] {
+                                    write!(f, "{:02X} ", byte)?;
+                                }
+                                if v.len() > display_len {
+                                    write!(f, "... ({} bytes)", v.len())?;
+                                }
+                                write!(f, "]")
+                            }
+            ParameterValue::ValPath(p) => write!(f, "Path: {}", p),
         }
     }
 }
@@ -168,13 +173,22 @@ pub enum ValidationMethod {
 
 #[repr(C)]
 pub struct Parameter {
-    pub value: ParameterValue,
+    pub value_type: ParameterValue,
+    pub value_default: ParameterValue,
     pub name_id: &'static str,
     pub validation: ValidationMethod,
     pub comment: &'static str,
+    pub title: &'static str,
     pub is_const: bool,
     pub tags: Vec<&'static str>,
     pub runtime: bool,
+}
+
+#[repr(C)]
+pub struct Group {
+    pub name: &'static str,
+    pub comment: &'static str,
+    pub title: &'static str,
 }
 
 // This implementation is used during build time
@@ -222,31 +236,56 @@ impl SchemaManager {
         Ok(Self { config_descriptor, file_descriptor })
     }
 
-    fn convert_to_parameter_value(value: &Value) -> Option<ParameterValue> {
+    fn convert_to_parameter_value(reference: &ParameterValue, value: &Value) -> Option<ParameterValue> {
         let (_, value) = value.as_message().unwrap().fields().next().unwrap();
         match value {
             Value::I32(v) => Some(ParameterValue::ValI32(*v)),
             Value::U32(v) => Some(ParameterValue::ValU32(*v)),
             Value::F32(v) => Some(ParameterValue::ValF32(*v)),
-            Value::String(v) => Some(ParameterValue::ValString(v.clone().into())),
+            Value::String(v) => 
+                match reference {
+                    ParameterValue::ValString(_) => Some(ParameterValue::ValString(v.clone().into())),
+                    ParameterValue::ValBlob(_) => Some(ParameterValue::ValPath(Box::leak(Box::new(v.clone())))),
+                    _ => None
+                },
             Value::Message(msg) => {
+                todo!("Implement Blobs from messages");
                 Some(ParameterValue::ValBlob(vec![]))
             },
             _ => None
         }
     }
 
-    pub(crate) fn get_parameters(&self) -> Result<Vec<Parameter>, Box<dyn Error>> {
+    pub(crate) fn get_parameters(&self) -> Result<(Vec<Parameter>, Vec<Group>), Box<dyn Error>> {
         let default_config = DynamicMessage::new(self.config_descriptor.clone());
+        let mut groups = Vec::new();
         let mut parameters = Vec::new();
         for field in default_config.descriptor().fields() {
             let value = &*default_config.get_field(&field);
             match value {
                 Value::Message(nested_msg) => {
+                    
+                    let group_options = field.options();
+                    let mut group = Group {
+                        title: Box::leak(Box::new(group_options.extensions()
+                        .find(|(desc, _)| desc.name() == "title")
+                        .and_then(|(_, val)| val.as_str())
+                        .unwrap_or(field.name()).to_string())),
+
+                        comment: Box::leak(Box::new(group_options.extensions()
+                            .find(|(desc, _)| desc.name() == "comment")
+                            .and_then(|(_, val)| val.as_str())
+                            .unwrap_or("").to_string())),
+
+                        name: Box::leak(Box::new(field.name().to_string()))
+                    };
+                    
+                    groups.push(group);
+
                     for pm_field in nested_msg.descriptor().fields() {
                         let field_type = pm_field.kind();
                         let mut parameter = Parameter{ 
-                            value: match field_type {
+                            value_type: match field_type {
                                 prost_reflect::Kind::Double => ParameterValue::ValF64(0.0),
                                 prost_reflect::Kind::Float => ParameterValue::ValF32(0.0),
                                 prost_reflect::Kind::Int32 => ParameterValue::ValI32(0),
@@ -263,16 +302,23 @@ impl SchemaManager {
                                 prost_reflect::Kind::Enum(enum_descriptor) => ParameterValue::ValI32(0),
                                 _ => ParameterValue::ValI32(0), //todo!()
                             },
+                            value_default: ParameterValue::ValI32(0),
                             // NOTE: Leak is okay since this function is only called at build time
                             name_id: Box::leak(Box::new(format!("{}@{}", field.name().to_string(), pm_field.name().to_string()))), 
                             validation: ValidationMethod::None, 
                             comment: "", 
+                            title: "",
                             is_const: false,
                             tags: Vec::new(),
                             runtime: false, 
                         };
 
                         let field_options = pm_field.options();
+
+                        parameter.title = Box::leak(Box::new(field_options.extensions()
+                            .find(|(desc, _)| desc.name() == "title")
+                            .and_then(|(_, val)| val.as_str())
+                            .unwrap_or(pm_field.name()).to_string()));
 
                         parameter.comment = Box::leak(Box::new(field_options.extensions()
                             .find(|(desc, _)| desc.name() == "comment")
@@ -289,16 +335,23 @@ impl SchemaManager {
                             .and_then(|(_, val)| val.as_bool())
                             .unwrap_or(false);
 
-                        let default_value = field_options.extensions()
+                        let value_default = field_options.extensions()
                             .find(|(desc, _)| desc.name() == "default_value")
-                            .and_then(|(_, val)| Self::convert_to_parameter_value(val));
+                            .and_then(|(_, val)| Self::convert_to_parameter_value(&parameter.value_type, val));
 
-                        if let Some(default_value) = default_value {
-                            if mem::discriminant(&parameter.value) != mem::discriminant(&default_value)
+                        if let Some(value_default) = value_default {
+                            if mem::discriminant(&parameter.value_type) != mem::discriminant(&value_default)
                             {
-                                return Err(format!("Field {} default value {} is of the wrong type, expected {}", parameter.name_id, default_value, parameter.value).into());
+                                match parameter.value_type
+                                {
+                                    ParameterValue::ValBlob(_) => match value_default {
+                                        ParameterValue::ValPath(_) => {},
+                                        _ => return Err(format!("Field {} default value {} is of the wrong type, expected Path", parameter.name_id, value_default).into()),
+                                    }
+                                    _ => return Err(format!("Field {} default value {} is of the wrong type, expected {}", parameter.name_id, value_default, parameter.value_type).into()),
+                                }
                             }
-                            parameter.value = default_value;
+                            parameter.value_default = value_default;
                         }
 
                         let validation = field_options.extensions()
@@ -343,22 +396,22 @@ impl SchemaManager {
                             ValidationMethod::Range { min, max } => {
                                 *min = field_options.extensions()
                                     .find(|(desc, _)| desc.name() == "min")
-                                    .and_then(|(_, val)| Self::convert_to_parameter_value(val))
+                                    .and_then(|(_, val)| Self::convert_to_parameter_value(&parameter.value_type, val))
                                     .ok_or(format!("Error: Range validation requires 'min' option for {}. Options: {}", parameter.name_id, field_options))?;
                                 
                                 *max = field_options.extensions()
                                     .find(|(desc, _)| desc.name() == "max")
-                                    .and_then(|(_, val)| Self::convert_to_parameter_value(val))
+                                    .and_then(|(_, val)| Self::convert_to_parameter_value(&parameter.value_type, val))
                                     .ok_or(format!("Error: Range validation requires 'max' option for {}. Options: {}", parameter.name_id, field_options))?;
                                 
-                                if mem::discriminant(&parameter.value) != mem::discriminant(&max)
+                                if mem::discriminant(&parameter.value_type) != mem::discriminant(&max)
                                 {
-                                    return Err(format!("Field {} max value {} is of the wrong type, expected {}", parameter.name_id, max, parameter.value).into());
+                                    return Err(format!("Field {} max value {} is of the wrong type, expected {}", parameter.name_id, max, parameter.value_type).into());
                                 }
 
-                                if mem::discriminant(&parameter.value) != mem::discriminant(&min)
+                                if mem::discriminant(&parameter.value_type) != mem::discriminant(&min)
                                 {
-                                    return Err(format!("Field {} min value {} is of the wrong type, expected {}", parameter.name_id, min, parameter.value).into());
+                                    return Err(format!("Field {} min value {} is of the wrong type, expected {}", parameter.name_id, min, parameter.value_type).into());
                                 }
 
                                 if field_options.extensions().any(|(desc, _)| desc.name() == "allowed_values") {
@@ -371,7 +424,7 @@ impl SchemaManager {
                                     .find(|(desc, _)| desc.name() == "allowed_values")
                                     .and_then(|(_, val)| {
                                         if let Value::List(list) = val {
-                                            Some(list.iter().filter_map(Self::convert_to_parameter_value).collect())
+                                            Some(list.iter().filter_map(|val| {Self::convert_to_parameter_value(&parameter.value_type, val)}).collect())
                                         } else {
                                             None
                                         }
@@ -379,9 +432,9 @@ impl SchemaManager {
                                     .ok_or(format!("Error: AllowedValues validation requires 'allowed_values' option {}. Options: {}", parameter.name_id, field_options))?;
                                 
                                 for value in values.iter() {
-                                    if mem::discriminant(&parameter.value) != mem::discriminant(&value)
+                                    if mem::discriminant(&parameter.value_type) != mem::discriminant(&value)
                                     {
-                                        return Err(format!("Field {} one of the allowed values {} is of the wrong type, expected {}", parameter.name_id, value, parameter.value).into());
+                                        return Err(format!("Field {} one of the allowed values {} is of the wrong type, expected {}", parameter.name_id, value, parameter.value_type).into());
                                     }
                                 }
     
@@ -401,7 +454,7 @@ impl SchemaManager {
                 }
             }
         }
-        Ok(parameters)
+        Ok((parameters, groups))
     }
 
 }

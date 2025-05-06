@@ -22,7 +22,8 @@ message ParameterValue {
         uint32 val_uint = 2;
         float val_float = 3;
         string val_str = 4;
-        CustomType val_custom = 5;
+        string val_path = 6;
+        CustomType val_custom = 7;
     }
 }
 
@@ -37,4 +38,5 @@ extend google.protobuf.FieldOptions {
     bool is_const = 50008;
     repeated string tags = 50009;
     bool runtime = 50010;
+    string title = 50011;
 }

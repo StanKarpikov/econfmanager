@@ -13,7 +13,7 @@ use crate::notifier::Notifier;
 use crate::database_utils::{DatabaseManager, Status};
 use crate::schema::ParameterValue;
 
-use generated::{ParameterId, PARAMETERS_NUM, PARAMETER_DATA};
+use generated::{ParameterId, PARAMETERS_NUM, PARAMETER_DATA, GROUPS_DATA};
 use timer::Guard;
 
 pub type ParameterUpdateCallback = Arc<dyn Fn(ParameterId) + Send + Sync + 'static>;
@@ -48,8 +48,9 @@ impl InterfaceInstance {
     pub fn new(
         database_path: &String,
         saved_database_path: &String,
+        default_data_folder: &String, 
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let config = Config::new(database_path, saved_database_path)?;
+        let config = Config::new(database_path, saved_database_path, default_data_folder)?;
         let database = DatabaseManager::new(&config)?;
         let runtime_data = Arc::new(Mutex::new(SharedRuntimeData::new()?));
         let notifier = Notifier::new()?;
@@ -101,6 +102,14 @@ impl InterfaceInstance {
         Ok(value)
     }
     
+    pub fn get_groups(&self) -> Vec<(String,String, String)> {
+        GROUPS_DATA.iter().map(|group| (group.name.to_string(), group.title.to_string(), group.comment.to_string())).collect()
+    }
+
+    pub fn get_group(&self, id: ParameterId) -> String {
+        PARAMETER_DATA[id as usize].name_id.split("@").next().unwrap().to_string()
+    }
+
     pub fn get_name(&self, id: ParameterId) -> String {
         PARAMETER_DATA[id as usize].name_id.to_owned()
     }
@@ -117,6 +126,25 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].runtime
     }
 
+    pub fn get_type_string(&self, id: ParameterId) -> String {
+        match &PARAMETER_DATA[id as usize].value_type {
+            ParameterValue::ValBool(_) => "Bool".to_owned(),
+            ParameterValue::ValI32(_) => "I32".to_owned(),
+            ParameterValue::ValU32(_) => "U32".to_owned(),
+            ParameterValue::ValI64(_) => "I64".to_owned(),
+            ParameterValue::ValU64(_) => "U64".to_owned(),
+            ParameterValue::ValF32(_) => "F32".to_owned(),
+            ParameterValue::ValF64(_) => "F64".to_owned(),
+            ParameterValue::ValString(_) => "String".to_owned(),
+            ParameterValue::ValBlob(_) => "Blob".to_owned(),
+            ParameterValue::ValPath(_) => todo!(),
+        }
+    }
+
+    pub fn get_title(&self, id: ParameterId) -> String {
+        PARAMETER_DATA[id as usize].title.to_owned()
+    }
+
     pub fn value_to_string(value: &ParameterValue) -> String {
         match value {
             ParameterValue::ValBool(b) => b.to_string(),
@@ -128,111 +156,106 @@ impl InterfaceInstance {
             ParameterValue::ValF64(f) => f.to_string(),
             ParameterValue::ValString(s) => s.to_string(),
             ParameterValue::ValBlob(data) => BASE64_STANDARD.encode(data),
+            ParameterValue::ValPath(_) => todo!(),
         }
     }
 
     pub fn set_from_string(&self, id: ParameterId, value: &str) -> Result<ParameterValue> {
-        let param_type = &PARAMETER_DATA[id as usize].value;
+        let param_type = &PARAMETER_DATA[id as usize].value_type;
         
         let converted_value = match param_type {
             ParameterValue::ValBool(_) => {
-                match value.to_lowercase().as_str() {
-                    "true" | "1" => ParameterValue::ValBool(true),
-                    "false" | "0" => ParameterValue::ValBool(false),
-                    _ => return Err(anyhow!("Expected 'true' or 'false' for boolean")),
-                }
-            },
-            
+                        match value.to_lowercase().as_str() {
+                            "true" | "1" => ParameterValue::ValBool(true),
+                            "false" | "0" => ParameterValue::ValBool(false),
+                            _ => return Err(anyhow!("Expected 'true' or 'false' for boolean")),
+                        }
+                    },
             ParameterValue::ValI32(_) => {
-                value.parse::<i32>()
-                    .map(ParameterValue::ValI32)
-                    .map_err(|_| anyhow!("Expected a 32-bit integer"))?
-            },
-            
+                        value.parse::<i32>()
+                            .map(ParameterValue::ValI32)
+                            .map_err(|_| anyhow!("Expected a 32-bit integer"))?
+                    },
             ParameterValue::ValU32(_) => {
-                value.parse::<u32>()
-                    .map(ParameterValue::ValU32)
-                    .map_err(|_| anyhow!("Expected an unsigned 32-bit integer"))?
-            },
-            
+                        value.parse::<u32>()
+                            .map(ParameterValue::ValU32)
+                            .map_err(|_| anyhow!("Expected an unsigned 32-bit integer"))?
+                    },
             ParameterValue::ValI64(_) => {
-                value.parse::<i64>()
-                    .map(ParameterValue::ValI64)
-                    .map_err(|_| anyhow!("Expected a 64-bit integer"))?
-            },
-            
+                        value.parse::<i64>()
+                            .map(ParameterValue::ValI64)
+                            .map_err(|_| anyhow!("Expected a 64-bit integer"))?
+                    },
             ParameterValue::ValU64(_) => {
-                value.parse::<u64>()
-                    .map(ParameterValue::ValU64)
-                    .map_err(|_| anyhow!("Expected an unsigned 64-bit integer"))?
-            },
-            
+                        value.parse::<u64>()
+                            .map(ParameterValue::ValU64)
+                            .map_err(|_| anyhow!("Expected an unsigned 64-bit integer"))?
+                    },
             ParameterValue::ValF32(_) => {
-                value.parse::<f32>()
-                    .map(ParameterValue::ValF32)
-                    .map_err(|_| anyhow!("Expected a 32-bit float"))?
-            },
-            
+                        value.parse::<f32>()
+                            .map(ParameterValue::ValF32)
+                            .map_err(|_| anyhow!("Expected a 32-bit float"))?
+                    },
             ParameterValue::ValF64(_) => {
-                value.parse::<f64>()
-                    .map(ParameterValue::ValF64)
-                    .map_err(|_| anyhow!("Expected a 64-bit float"))?
-            },
-            
+                        value.parse::<f64>()
+                            .map(ParameterValue::ValF64)
+                            .map_err(|_| anyhow!("Expected a 64-bit float"))?
+                    },
             ParameterValue::ValString(_) => {
-                ParameterValue::ValString(value.to_string().into())
-            },
-            
+                        ParameterValue::ValString(value.to_string().into())
+                    },
             ParameterValue::ValBlob(_) => {
-                let decoded = BASE64_STANDARD.decode(value)?;
-                ParameterValue::ValBlob(decoded)
-            }
+                        let decoded = BASE64_STANDARD.decode(value)?;
+                        ParameterValue::ValBlob(decoded)
+                    }
+            ParameterValue::ValPath(_) => todo!(),
         };
         
         Ok(converted_value)
     }
 
     pub fn set_from_json(&self, id: ParameterId, value: &Value) -> Result<ParameterValue> {
-        let param_type = &PARAMETER_DATA[id as usize].value;
+        let param_type = &PARAMETER_DATA[id as usize].value_type;
     
         let converted_value = match param_type {
             ParameterValue::ValBool(_) => value
-                        .as_bool()
-                        .map(ParameterValue::ValBool)
-                        .ok_or_else(|| anyhow!("Expected a boolean"))?,
+                                .as_bool()
+                                .map(ParameterValue::ValBool)
+                                .ok_or_else(|| anyhow!("Expected a boolean"))?,
             ParameterValue::ValI32(_) => value
-                        .as_i64()
-                        .map(|v| ParameterValue::ValI32(v as i32))
-                        .ok_or_else(|| anyhow!("Expected an integer"))?,
+                                .as_i64()
+                                .map(|v| ParameterValue::ValI32(v as i32))
+                                .ok_or_else(|| anyhow!("Expected an integer"))?,
             ParameterValue::ValU32(_) => value
-                        .as_u64()
-                        .map(|v| ParameterValue::ValU32(v as u32))
-                        .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
+                                .as_u64()
+                                .map(|v| ParameterValue::ValU32(v as u32))
+                                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
             ParameterValue::ValI64(_) => value
-                        .as_i64()
-                        .map(ParameterValue::ValI64)
-                        .ok_or_else(|| anyhow!("Expected an integer"))?,
+                                .as_i64()
+                                .map(ParameterValue::ValI64)
+                                .ok_or_else(|| anyhow!("Expected an integer"))?,
             ParameterValue::ValU64(_) => value
-                        .as_u64()
-                        .map(ParameterValue::ValU64)
-                        .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
+                                .as_u64()
+                                .map(ParameterValue::ValU64)
+                                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
             ParameterValue::ValF32(_) => value
-                        .as_f64()
-                        .map(|v| ParameterValue::ValF32(v as f32))
-                        .ok_or_else(|| anyhow!("Expected a float"))?,
+                                .as_f64()
+                                .map(|v| ParameterValue::ValF32(v as f32))
+                                .ok_or_else(|| anyhow!("Expected a float"))?,
             ParameterValue::ValF64(_) => value
-                        .as_f64()
-                        .map(ParameterValue::ValF64)
-                        .ok_or_else(|| anyhow!("Expected a float"))?,
+                                .as_f64()
+                                .map(ParameterValue::ValF64)
+                                .ok_or_else(|| anyhow!("Expected a float"))?,
             ParameterValue::ValString(_) => value
-                        .as_str()
-                        .map(|v| ParameterValue::ValString(v.to_string().into()))
-                        .ok_or_else(|| anyhow!("Expected a string"))?,
+                                .as_str()
+                                .map(|v| ParameterValue::ValString(v.to_string().into()))
+                                .ok_or_else(|| anyhow!("Expected a string"))?,
             ParameterValue::ValBlob(_) => {
-                        let base64_str = value.as_str().ok_or_else(|| anyhow!("Expected a base64 string"))?;
-                        let decoded = BASE64_STANDARD.decode(base64_str)?;
-                        ParameterValue::ValBlob(decoded)
-                    }
+                                let base64_str = value.as_str().ok_or_else(|| anyhow!("Expected a base64 string"))?;
+                                let decoded = BASE64_STANDARD.decode(base64_str)?;
+                                ParameterValue::ValBlob(decoded)
+                            }
+            ParameterValue::ValPath(_) => todo!(),
         };
     
         Ok(converted_value)
@@ -287,9 +310,15 @@ impl InterfaceInstance {
     }
 
     pub fn load(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.database.load_database()
+        self.database.load_database()?;
+        self.database.update()
     }
 
+    pub fn factory_reset(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.database.drop_database()?;
+        self.database.update()
+    }
+    
     pub fn save(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let filter = |key: &String| {
             PARAMETER_DATA
