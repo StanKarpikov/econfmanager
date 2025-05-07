@@ -69,9 +69,9 @@ Current limitations (TODO):
 
 Build process generates:
 
-- Parameter definitions in `target/generated/generated.rs` containing the `PARAMETER_DATA` const array and the unique enum with the parameter IDs `ParameterId`.
+- Parameter definitions in `generated/generated.rs` containing the `PARAMETER_DATA` const array and the unique enum with the parameter IDs `ParameterId`.
 
-- C bindings in `target/generated/parameter_functions.rs`
+- C bindings in `generated/parameter_functions.rs`
 
 - `parameter_ids.proto` with parameter IDs
 
