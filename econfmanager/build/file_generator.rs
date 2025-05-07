@@ -176,6 +176,21 @@ pub(crate) fn generate_parameter_enum(
     Ok(())
 }
 
+fn value_to_string(value: &ParameterValue) -> String {
+    match value {
+        ParameterValue::ValBool(b) => b.to_string(),
+        ParameterValue::ValI32(i) => i.to_string(),
+        ParameterValue::ValU32(u) => u.to_string(),
+        ParameterValue::ValI64(i) => i.to_string(),
+        ParameterValue::ValU64(u) => u.to_string(),
+        ParameterValue::ValF32(f) => f.to_string(),
+        ParameterValue::ValF64(f) => f.to_string(),
+        ParameterValue::ValString(s) => s.to_string(),
+        ParameterValue::ValBlob(_) => todo!(),
+        ParameterValue::ValPath(_) => todo!(),
+    }
+}
+
 pub(crate) fn generate_parameter_functions(
     parameters: &Vec<Parameter>,
     build_dir: String,
@@ -205,15 +220,46 @@ pub(crate) fn generate_parameter_functions(
         };
 
         writeln!(f, "#[allow(non_camel_case_types)]")?;
-        writeln!(f, "pub type {}_t = {}; \n", pm_name, pm_type)?;
+
+        let mut is_enum = false;
+        if let ParameterValue::ValI32(_) = &p.value_type {
+            match &p.validation {
+                ValidationMethod::AllowedValues { values, names } => {
+                    let vals = values
+                        .iter()
+                        .map(|v| v)
+                        .collect::<Vec<_>>();
+                    let str_names = names
+                        .iter()
+                        .map(|v| v)
+                        .collect::<Vec<_>>();
+                    writeln!(f, "#[repr(i32)]")?;
+                    writeln!(f, "pub enum {}_t {{", pm_name)?;
+                    for (val, name) in vals.iter().zip(str_names.iter()) {
+                        writeln!(f, "    {} = {},", name, value_to_string(val))?;
+                    }
+                    writeln!(f, "}}\n")?;
+                    is_enum = true;
+                }
+                _ => writeln!(f, "pub type {}_t = {}; \n", pm_name, pm_type)?,
+            };
+        }else{
+            writeln!(f, "pub type {}_t = {}; \n", pm_name, pm_type)?;
+        }
 
         writeln!(f, "#[unsafe(no_mangle)]")?;
         writeln!(f, "pub extern \"C\" fn get_{}(interface: *const CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
+        if is_enum {
+            writeln!(f, "    let {} = {} as *mut i32;", pm_name, pm_name)?;
+        }
         writeln!(f, "    get_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
         writeln!(f, "}}\n")?;
 
         writeln!(f, "#[unsafe(no_mangle)]")?;
         writeln!(f, "pub extern \"C\" fn set_{}(interface: *const CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, pm_name)?;
+        if is_enum {
+            writeln!(f, "    let {} = {} as *mut i32;", pm_name, pm_name)?;
+        }
         writeln!(f, "    set_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
         writeln!(f, "}}\n")?;
     }
