@@ -6,15 +6,8 @@ pub mod constants;
 pub mod database_utils;
 pub mod event_receiver;
 pub mod lib_helper_functions;
-pub mod services {
-    include!(concat!(env!("OUT_DIR"), "/", env!("SERVICE_PROTO_FILE_RS")));
-}
-pub mod parameter_ids {
-    include!(concat!(env!("OUT_DIR"), "/", env!("PARAMETER_IDS_PROTO_FILE_RS")));
-}
-pub mod parameters {
-    include!(concat!(env!("OUT_DIR"), "/parameters.rs"));
-}
+
+include!(concat!(env!("OUT_DIR"), "/generated_mod.rs"));
 
 // We have to put the files in one of the project folders because cbindgen can't expand environment variables,
 // an the location of the target folder is not stable

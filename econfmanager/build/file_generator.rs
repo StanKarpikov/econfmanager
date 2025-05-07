@@ -121,15 +121,21 @@ pub(crate) fn generate_parameter_enum(
                 format_anyvalue(&min),
                 format_anyvalue(&max),
             ),
-            ValidationMethod::AllowedValues { values } => {
+            ValidationMethod::AllowedValues { values, names } => {
                 let vals = values
                     .iter()
                     .map(|v| format_anyvalue(v))
                     .collect::<Vec<_>>()
                     .join(", ");
+                let str_names = names
+                    .iter()
+                    .map(|v| "\"".to_string() + v + "\"")
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!(
-                    "ValidationMethod::AllowedValues {{ values: Cow::Borrowed(&[{}]) }}",
-                    vals
+                    "ValidationMethod::AllowedValues {{ values: Cow::Borrowed(&[{}]), names: Cow::Borrowed(&[{}]) }}",
+                    vals,
+                    str_names
                 )
             }
             ValidationMethod::CustomCallback => todo!(),

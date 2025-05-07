@@ -3,7 +3,7 @@ syntax = "proto3";
 import "options.proto";
 import "parameter_ids.proto";
 
-package services;
+package service_events;
 
 message ParameterNotification {
   parameter_ids.ParameterIdApi id = 1;

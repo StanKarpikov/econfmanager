@@ -23,6 +23,12 @@ pub enum ParameterValue {
     ValPath(&'static str),
 }
 
+impl Default for ParameterValue {
+    fn default() -> Self {
+        ParameterValue::ValI32(0)
+    }
+}
+
 impl Serialize for ParameterValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -166,7 +172,8 @@ pub enum ValidationMethod {
         max: ParameterValue,
     },
     AllowedValues {
-        values: Cow<'static, [ParameterValue]>
+        values: Cow<'static, [ParameterValue]>,
+        names: Cow<'static, [&'static str]>,
     },
     CustomCallback, // Validate using a callback function
 }
@@ -228,7 +235,7 @@ impl SchemaManager {
         let pool = DescriptorPool::decode(&*descriptor_bytes)?;
     
         let config_descriptor = pool.get_message_by_name("parameters.Configuration")
-            .ok_or("Configuration message not found in descriptor pool")?;
+            .ok_or("Configuration message 'parameters.Configuration' not found in descriptor pool. Check that the 'package parameters;' is defined in parameters.proto")?;
         
         let file_descriptor = pool.get_file_by_name(&proto_name)
         .ok_or(format!("{} file descriptor not found", proto_name))?;
@@ -253,8 +260,20 @@ impl SchemaManager {
                     _ => None
                 },
             Value::Message(msg) => {
-                todo!("Implement Blobs from messages");
-                Some(ParameterValue::ValBlob(vec![]))
+                match reference {
+                    ParameterValue::ValI32(_) => {
+                        if let Some((_, value)) = msg.fields().next() {
+                            Some(ParameterValue::ValI32(value.as_enum_number().unwrap()))
+                        }
+                        else {
+                            todo!("Only custom_type oneof is supported at the moment");
+                        }
+                    },
+                    _ => todo!("Blob parameters not supported at the moment"),
+                }
+            },
+            Value::EnumNumber(enum_value) => {
+                Some(ParameterValue::ValI32(*enum_value as i32))
             },
             _ => None
         }
@@ -299,12 +318,12 @@ impl SchemaManager {
                                 prost_reflect::Kind::Bool => ParameterValue::ValBool(false),
                                 prost_reflect::Kind::String => ParameterValue::ValString(Cow::Borrowed("")),
                                 prost_reflect::Kind::Bytes => ParameterValue::ValBlob(vec![]),
-                                prost_reflect::Kind::Message(_) => {
-                                    // For message types, we'll treat them as blobs
+                                prost_reflect::Kind::Message(msg) => {
+                                    // For other message types, we'll treat them as blobs
                                     ParameterValue::ValBlob(vec![])
                                 },
                                 prost_reflect::Kind::Enum(enum_descriptor) => ParameterValue::ValI32(0),
-                                _ => ParameterValue::ValI32(0), //todo!()
+                                _ => todo!("Unsupported paramter kind {:?}", field_type)
                             },
                             value_default: ParameterValue::ValI32(0),
                             // NOTE: Leak is okay since this function is only called at build time
@@ -341,7 +360,14 @@ impl SchemaManager {
 
                         let value_default = field_options.extensions()
                             .find(|(desc, _)| desc.name() == "default_value")
-                            .and_then(|(_, val)| Self::convert_to_parameter_value(&parameter.value_type, val));
+                            .and_then(|(_, val)| {
+                                let val = Self::convert_to_parameter_value(&parameter.value_type, val);
+                                if val.is_none() 
+                                {
+                                    panic!("Could not process default value for {}/{}", field.name().to_string(), pm_field.name().to_string());
+                                }
+                                val
+                                });
 
                         if let Some(value_default) = value_default {
                             if mem::discriminant(&parameter.value_type) != mem::discriminant(&value_default)
@@ -375,7 +401,7 @@ impl SchemaManager {
                                         }
                                     },
                                     2 => {
-                                        ValidationMethod::AllowedValues { values: Cow::Borrowed(&[]) } // Placeholder
+                                        ValidationMethod::AllowedValues { values: Cow::Borrowed(&[]), names: Cow::Borrowed(&[]) } // Placeholder
                                     },
                                     3 => ValidationMethod::CustomCallback,
                                     _ => {
@@ -385,6 +411,16 @@ impl SchemaManager {
                             }
                             else {
                                 eprintln!("Validation method has wrong type {:?} for {}", val, parameter.name_id);
+                            }
+                        }
+
+                        // Force allowed values for Enum fields
+                        if let prost_reflect::Kind::Enum(enum_desc) = pm_field.kind()
+                        {
+                            match &mut parameter.validation {
+                                ValidationMethod::None => parameter.validation = ValidationMethod::AllowedValues { values: Cow::Borrowed(&[]), names: Cow::Borrowed(&[]) },
+                                ValidationMethod::AllowedValues { values, names } => {},
+                                _ => todo!("Only allowed values validation method is supported for enums"),
                             }
                         }
 
@@ -423,22 +459,33 @@ impl SchemaManager {
                                 }
                             },
                             
-                            ValidationMethod::AllowedValues { values } => {
-                                *values = field_options.extensions()
-                                    .find(|(desc, _)| desc.name() == "allowed_values")
-                                    .and_then(|(_, val)| {
-                                        if let Value::List(list) = val {
-                                            Some(list.iter().filter_map(|val| {Self::convert_to_parameter_value(&parameter.value_type, val)}).collect())
-                                        } else {
-                                            None
+                            ValidationMethod::AllowedValues { values, names} => {
+                                if let prost_reflect::Kind::Enum(enum_desc) = pm_field.kind()
+                                {
+                                    // for val in enum_desc.values() {
+                                    //     todo!("Variant: {} = {}", val.name(), val.number());
+                                    // }
+                                    *values = enum_desc.values().map(|v| ParameterValue::ValI32(v.number())).collect();
+                                    let mut names_str: Box<[&'static str]> = enum_desc.values().map(|v| Box::leak(v.name().to_string().into_boxed_str()) as &'static str).collect();
+                                    *names = Cow::Owned(names_str.into_vec());
+                                }
+                                else {
+                                    *values = field_options.extensions()
+                                        .find(|(desc, _)| desc.name() == "allowed_values")
+                                        .and_then(|(_, val)| {
+                                            if let Value::List(list) = val {
+                                                Some(list.iter().filter_map(|val| {Self::convert_to_parameter_value(&parameter.value_type, val)}).collect())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .ok_or(format!("Error: AllowedValues validation requires 'allowed_values' option {}. Options: {}", parameter.name_id, field_options))?;
+                                    
+                                    for value in values.iter() {
+                                        if mem::discriminant(&parameter.value_type) != mem::discriminant(&value)
+                                        {
+                                            return Err(format!("Field {} one of the allowed values {} is of the wrong type, expected {}", parameter.name_id, value, parameter.value_type).into());
                                         }
-                                    })
-                                    .ok_or(format!("Error: AllowedValues validation requires 'allowed_values' option {}. Options: {}", parameter.name_id, field_options))?;
-                                
-                                for value in values.iter() {
-                                    if mem::discriminant(&parameter.value_type) != mem::discriminant(&value)
-                                    {
-                                        return Err(format!("Field {} one of the allowed values {} is of the wrong type, expected {}", parameter.name_id, value, parameter.value_type).into());
                                     }
                                 }
     

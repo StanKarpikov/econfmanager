@@ -27,7 +27,7 @@ message ParameterValue {
         double val_float64 = 7;
         string val_str = 8;
         string val_path = 9;
-        CustomType val_custom = 10;
+        custom_types.CustomType val_custom = 10;
     }
 }
 

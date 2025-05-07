@@ -13,8 +13,8 @@ use schema::SchemaManager;
 
 const OPTIONS_PROTO_FILE: &str = "options.proto";
 const PARAMETERS_PROTO_FILE: &str = "parameters.proto";
-const SERVICE_PROTO_FILE: &str = "services.proto";
-const SERVICE_PROTO_FILE_RS: &str = "services.rs";
+const SERVICE_PROTO_FILE: &str = "service_events.proto";
+const SERVICE_PROTO_FILE_RS: &str = "service_events.rs";
 const PARAMETER_IDS_FILE: &str = "parameter_ids.proto";
 const PARAMETER_IDS_PROTO_FILE_RS: &str = "parameter_ids.rs";
 const DESCRIPTORS_FILE: &str = "descriptors.bin";
@@ -117,12 +117,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("cbindgen failed with status: {}", status);
     }
 
+    let mut proto_files: Vec<_> = fs::read_dir(parameters_proto_path)
+        .unwrap()
+        .filter_map(|entry| {
+            let entry = entry.unwrap();
+            let path = entry.file_name();
+            if entry.path().extension().map(|e| e == "proto").unwrap_or(false) {
+                Some(path.to_str().unwrap().to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    proto_files.push(SERVICE_PROTO_FILE.to_owned());
+    proto_files.push(PARAMETER_IDS_FILE.to_owned());
+
     prost_build::compile_protos(
-        &[
-            SERVICE_PROTO_FILE,
-            PARAMETERS_PROTO_FILE,
-            PARAMETER_IDS_FILE,
-        ],
+        &proto_files,
         &[
             build_dir.to_str().unwrap(), 
             abs_parameters_path.to_str().unwrap(), 
@@ -130,6 +142,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
     )
         .unwrap_or_else(|op|{panic!("Error compiling protos: {}", op)});
+
+    let mut mod_contents = String::new();
+    for proto_file in &proto_files {
+        let path = Path::new(proto_file);
+        let stem = path.file_stem().unwrap().to_str().unwrap();
+        mod_contents.push_str(&format!(
+            "pub mod {} {{\n    include!(\"{}/{}.rs\");\n}}\n\n",
+            stem,
+            out_dir.to_str().unwrap(),
+            stem
+        ));
+    }
+
+    let mod_path = Path::new(&out_dir).join("generated_mod.rs");
+    fs::write(mod_path, mod_contents).unwrap();
+    
     // eprintln!("path = {}", out_dir.to_str().unwrap());
     Ok(())
 }

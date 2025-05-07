@@ -9,7 +9,7 @@ use crate::constants::{MULTICAST_GROUP, MULTICAST_PORT};
 use crate::generated::ParameterId;
 
 use crate::interface::SharedRuntimeData;
-use crate::services::ParameterNotification;
+use crate::service_events::ParameterNotification;
 
 #[derive (Clone, Default)]
 pub(crate) struct EventReceiver {

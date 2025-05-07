@@ -26,7 +26,6 @@ pub(crate) struct RuntimeParametersData {
     pub(crate) callback: Option<ParameterUpdateCallback>,
 }
 
-#[derive(Default)]
 pub(crate) struct SharedRuntimeData {
     pub(crate) parameters_data: [RuntimeParametersData; PARAMETERS_NUM],
 }
@@ -38,6 +37,14 @@ impl SharedRuntimeData {
             callback: None,
         });
         Ok(Self { parameters_data })
+    }
+}
+
+impl Default for SharedRuntimeData {
+    fn default() -> Self {
+        Self {
+            parameters_data: std::array::from_fn(|_| RuntimeParametersData::default()),
+        }
     }
 }
 
