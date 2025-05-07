@@ -26,3 +26,4 @@ examples/peripheral_service/build/*
 examples/peripheral_service/lib/*
 
 .vscode
+generated

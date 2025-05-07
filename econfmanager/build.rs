@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("no variable called OUT_DIR"));
-    // let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
 
     let generated_proto_path = Path::new(&out_dir);
     let parameters_proto_flepath = Path::new(&parameters_proto_path).join(PARAMETERS_PROTO_FILE);
@@ -77,7 +77,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(3) // OUT_DIR is like target/debug/build/crate-hash/out
         .expect("Failed to find build directory");
 
-    let generated_dir_path = build_dir.ancestors().nth(1).expect("Failed to find generated files directory").join("generated");
+    // We have to put the files in one of the project folders because cbindgen can't expand environment variables,
+    // an the location of the target folder is not stable
+    let generated_dir_path = PathBuf::from(project_root).join("generated");
     let generated_dir = generated_dir_path.as_path();
     // println!("cargo:rustc-env=GENERATED_FILES_DIR={}", generated_dir.to_str().unwrap().to_owned());
     fs::create_dir_all(generated_dir)
