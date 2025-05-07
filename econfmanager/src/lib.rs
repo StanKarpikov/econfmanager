@@ -18,10 +18,10 @@ pub mod parameters {
 
 // We have to put the files in one of the project folders because cbindgen can't expand environment variables,
 // an the location of the target folder is not stable
-#[path = "generated/parameter_functions.rs"]
+#[path = "../generated/parameter_functions.rs"]
 pub mod parameter_functions;
 
-#[path = "generated/generated.rs"]
+#[path = "../generated/generated.rs"]
 pub mod generated;
 
 
