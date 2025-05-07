@@ -239,9 +239,13 @@ impl SchemaManager {
     fn convert_to_parameter_value(reference: &ParameterValue, value: &Value) -> Option<ParameterValue> {
         let (_, value) = value.as_message().unwrap().fields().next().unwrap();
         match value {
+            Value::Bool(v) => Some(ParameterValue::ValBool(*v)),
             Value::I32(v) => Some(ParameterValue::ValI32(*v)),
             Value::U32(v) => Some(ParameterValue::ValU32(*v)),
+            Value::I64(v) => Some(ParameterValue::ValI64(*v)),
+            Value::U64(v) => Some(ParameterValue::ValU64(*v)),
             Value::F32(v) => Some(ParameterValue::ValF32(*v)),
+            Value::F64(v) => Some(ParameterValue::ValF64(*v)),
             Value::String(v) => 
                 match reference {
                     ParameterValue::ValString(_) => Some(ParameterValue::ValString(v.clone().into())),

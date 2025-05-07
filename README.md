@@ -47,9 +47,9 @@ Parameter example with validation:
 message ImageAcquisition {
     int32 image_width = 1 [(options.title) = "Image Width",
                            (options.validation) = RANGE,
-                           (options.min) = { val_int: 256 },
-                           (options.max) = { val_int: 2048 },
-                           (options.default_value) = { val_int: 256 },
+                           (options.min) = { val_int32: 256 },
+                           (options.max) = { val_int32: 2048 },
+                           (options.default_value) = { val_int32: 256 },
                            (options.comment) = "The width of the processed image"];
     // ...
 }

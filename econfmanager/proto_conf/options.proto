@@ -19,12 +19,15 @@ enum ValidationMethod {
 message ParameterValue {
     oneof value_type {
         bool val_bool = 1;
-        int32 val_int = 2;
-        uint32 val_uint = 3;
-        float val_float = 4;
-        string val_str = 5;
-        string val_path = 6;
-        CustomType val_custom = 7;
+        int32 val_int32 = 2;
+        uint32 val_uint32 = 3;
+        int64 val_int64 = 4;
+        uint64 val_uint64 = 5;
+        float val_float32 = 6;
+        double val_float64 = 7;
+        string val_str = 8;
+        string val_path = 9;
+        CustomType val_custom = 10;
     }
 }
 
