@@ -1,7 +1,7 @@
 [package]
 name = "econfmanager"
 description = "Configuration Manager for Embedded Systems"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
 
