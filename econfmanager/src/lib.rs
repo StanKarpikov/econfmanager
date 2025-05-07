@@ -107,14 +107,20 @@ pub extern "C" fn econf_init(
         default_data_folder: *const std::os::raw::c_char,
         interface: *mut *mut CInterfaceInstance
     ) -> EconfStatus {
-    env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format(|buf, record| {
+            let file_name = record.file().unwrap_or("unknown");
+            let file_name = std::path::Path::new(file_name)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+    
             writeln!(
                 buf,
                 "{} [{}] {}:{} - {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 record.level(),
-                record.file().unwrap_or("unknown"),
+                file_name,
                 record.line().unwrap_or(0),
                 record.args()
             )

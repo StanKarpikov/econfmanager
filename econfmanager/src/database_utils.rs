@@ -225,7 +225,9 @@ impl DatabaseManager {
 
     pub(crate) fn load_database(&self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Loading database");
-        self.drop_database()?;
+        if let Err(error) = self.drop_database() {
+            error!("Could not drop the database: {}", error);
+        }
         info!("Copying database");
         Self::copy_database(
             Path::new(&self.saved_database_path),
