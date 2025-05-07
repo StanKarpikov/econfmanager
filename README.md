@@ -61,6 +61,8 @@ Current limitations (TODO):
 
 - Message-type parameters not fully implemented (will be through the `custom_types.proto`)
 
+bytes messages (Blob, binary) can have default values that are set as `val_path` pointing to the file.
+
 ### 2. Build the Library
 
 1. Set environment variable `PARAMETERS_PROTO_PATH` pointing to your `paramteres.proto` file
@@ -101,7 +103,19 @@ Basic workflow:
 
 Reference: `jsonrpc_server/main.rs`
 
-The Rust API uses InterfaceInstance struct, providing similar functionality to the C library.
+The Rust API uses InterfaceInstance struct, providing similar functionality to the C library. Add the following to the Cargo.toml
+
+```toml
+[dependencies]
+econfmanager = { git = "https://github.com/StanKarpikov/econfmanager", version = "0.1.2" }
+```
+
+And set the `PARAMETERS_PROTO_PATH` path to the Protobuf files in the `.cargo/config.toml`:
+
+```toml
+[env]
+PARAMETERS_PROTO_PATH = { value = "path/to/proto", relative = true, force = false }
+```
 
 ## Architecture
 
