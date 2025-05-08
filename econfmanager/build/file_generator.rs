@@ -1,4 +1,5 @@
 use std::fs;
+use std::process::Command;
 use std::{collections::HashSet, fs::File};
 use std::io::Write;
 use std::path::Path;
@@ -18,6 +19,10 @@ fn get_parameter_name_for_enum(name_id: &String) -> String {
 
 fn get_parameter_name_for_function(name_id: &String) -> String {
     name_id.split('@').collect::<Vec<_>>().join("_")
+}
+
+fn get_parameter_name_short(name_id: &String) -> String {
+    name_id.split('@').nth(1).unwrap_or(name_id).to_string()
 }
 
 fn format_anyvalue_type(v: &ParameterValueType) -> String {
@@ -218,86 +223,203 @@ pub(crate) fn generate_parameter_functions(
     build_dir: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dest_path = Path::new(&build_dir).join("parameter_functions.rs");
-    let mut f = File::create(dest_path)?;
+    {
+        let mut f = File::create(dest_path.clone())?;
 
-    writeln!(f, "/// Auto‐generated. See build.rs\n")?;
-    
-    writeln!(f, "use std::ffi::c_char;")?;
-    writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, set_parameter}}, generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
-    
-    let mut enums = HashSet::new();
-    
-    for p in parameters {
-        let pm_enum_name = get_parameter_name_for_enum(&p.name_id.to_string());
-        let pm_name = get_parameter_name_for_function(&p.name_id.to_string());
-        let pm_type = match &p.value_type {
-            ParameterValueType::TypeBool => "bool",
-            ParameterValueType::TypeI32 => "i32",
-            ParameterValueType::TypeString => "c_char",
-            ParameterValueType::TypeU32 => "u32",
-            ParameterValueType::TypeI64 => "i64",
-            ParameterValueType::TypeU64 => "u64",
-            ParameterValueType::TypeF32 => "f32",
-            ParameterValueType::TypeF64 => "f64",
-            ParameterValueType::TypeBlob => "c_char",
-            ParameterValueType::TypeEnum(_) => "i32",
-            ParameterValueType::TypeNone => "none",
-        };
+        writeln!(f, "/// Auto‐generated. See build.rs\n")?;
+        
+        writeln!(f, "use std::ffi::c_char;")?;
+        writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, get_parameter_quick, set_parameter, get_string, set_string, get_blob, set_blob}}, generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
+        writeln!(f, "use num_derive::FromPrimitive;")?;
+        writeln!(f, "use num_traits::FromPrimitive;")?;
 
-        writeln!(f, "#[allow(non_camel_case_types)]")?;
+        let mut enums = HashSet::new();
+        
+        for p in parameters {
+            let pm_name = get_parameter_name_for_function(&p.name_id.to_string());
+            let pm_id_name = get_parameter_name_for_enum(&p.name_id.to_string());
+            let short_name = get_parameter_name_short(&p.name_id.to_string());
 
-        let mut is_enum = false;
-        let mut p_enum_name = "";
-        if let ParameterValueType::TypeEnum(enum_name) = &p.value_type {
-            match &p.validation {
-                ValidationMethod::AllowedValues { values, names } => {
-                    let vals = values
-                        .iter()
-                        .map(|v| v)
-                        .collect::<Vec<_>>();
-                    let str_names = names
-                        .iter()
-                        .map(|v| v)
-                        .collect::<Vec<_>>();
-
-                    if !enums.contains(&enum_name)
-                    {
-                        enums.insert(enum_name);
-                        writeln!(f, "#[repr(i32)]")?;
-                        writeln!(f, "pub enum {}_t {{", enum_name)?;
-                        for (val, name) in vals.iter().zip(str_names.iter()) {
-                            writeln!(f, "    {} = {},", name, value_to_string(val))?;
-                        }
-                        writeln!(f, "}}\n")?;
-                    }
-                    p_enum_name = enum_name;
-                    is_enum = true;
-                }
-                _ => todo!("Probably something wrong"),
-            };
-
-           
-        }else{
-            writeln!(f, "pub type {}_t = {}; \n", pm_name, pm_type)?;
-        }
-
-        writeln!(f, "#[unsafe(no_mangle)]")?;
-        writeln!(f, "pub extern \"C\" fn get_{}(interface: *const CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, if is_enum {p_enum_name} else {&pm_name})?;
-        if is_enum {
-            writeln!(f, "    let {} = {} as *mut i32;", pm_name, pm_name)?;
-        }
-        writeln!(f, "    get_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
-        writeln!(f, "}}\n")?;
-
-        if !p.is_const {
-            writeln!(f, "#[unsafe(no_mangle)]")?;
-            writeln!(f, "pub extern \"C\" fn set_{}(interface: *const CInterfaceInstance, {}: *mut {}_t) -> EconfStatus {{", pm_name, pm_name, if is_enum {p_enum_name} else {&pm_name})?;
-            if is_enum {
-                writeln!(f, "    let {} = {} as *mut i32;", pm_name, pm_name)?;
+            match &p.value_type {
+                ParameterValueType::TypeNone => todo!(),
+                ParameterValueType::TypeBool => write_general_setter_and_getter(&mut f, "bool".to_owned(), pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeI32 => write_general_setter_and_getter(&mut f, "i32".to_owned(), pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeU32 => write_general_setter_and_getter(&mut f, "u32".to_owned(), pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeI64 => write_general_setter_and_getter(&mut f, "i64".to_owned(), pm_name,short_name, pm_id_name,  p.is_const)?,
+                ParameterValueType::TypeU64 => write_general_setter_and_getter(&mut f, "u64".to_owned(), pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeF32 => write_general_setter_and_getter(&mut f, "f32".to_owned(), pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeF64 => write_general_setter_and_getter(&mut f, "f64".to_owned(), pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeString => write_string_setter_and_getter(&mut f, pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeBlob => write_blob_setter_and_getter(&mut f, pm_name, short_name, pm_id_name, p.is_const)?,
+                ParameterValueType::TypeEnum(p_enum_name) => write_enum_setter_and_getter(&mut f, p_enum_name.to_string(), pm_name, short_name, pm_id_name, p.is_const, &p.validation, &mut enums)?,
             }
-            writeln!(f, "    set_parameter::<{}>(interface, ParameterId::{}, {})", pm_type, pm_enum_name, pm_name)?;
-            writeln!(f, "}}\n")?;
         }
+    }
+
+    Command::new("rustfmt")
+        .arg(dest_path)
+        .status()?;
+
+    Ok(())
+}
+
+fn write_string_setter_and_getter(f: &mut File, pm_name: String, short_name: String, pm_id_name: String, is_const: bool) -> Result<(), Box<dyn std::error::Error>> {
+    writeln!(f, r#"
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_{pm_name}(
+            interface: *const CInterfaceInstance,
+            {short_name}: *mut c_char,
+            max_len: usize
+        ) -> EconfStatus {{
+            get_string(interface, ParameterId::{pm_id_name}, {short_name}, max_len)
+        }}
+    "#)?;
+            
+    if !is_const {
+        writeln!(f, r#"
+            #[unsafe(no_mangle)]
+            pub extern "C" fn set_{pm_name}(
+                interface: *const CInterfaceInstance,
+                {short_name}: *const c_char
+            ) -> EconfStatus {{
+                set_string(interface, ParameterId::{pm_id_name}, {short_name})
+            }}
+        "#)?;
+    }
+
+    Ok(())
+}
+
+fn write_blob_setter_and_getter(f: &mut File, pm_name: String, short_name: String, pm_id_name: String, is_const: bool) -> Result<(), Box<dyn std::error::Error>> {
+    writeln!(f, r#"
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_{pm_name}(
+            interface: *const CInterfaceInstance,
+            {short_name}: *mut u8,
+            max_len: usize,
+            out_len: *mut usize,
+        ) -> EconfStatus {{
+            get_blob(interface, ParameterId::{pm_id_name}, {short_name}, max_len, out_len)
+        }}
+    "#)?;
+            
+    if !is_const {
+        writeln!(f, r#"
+            #[unsafe(no_mangle)]
+            pub extern "C" fn set_{pm_name}(
+                interface: *const CInterfaceInstance,
+                {short_name}: *const u8,
+                len: usize
+            ) -> EconfStatus {{
+                set_blob(interface, ParameterId::{pm_id_name}, {short_name}, len)
+            }}
+        "#)?;
+    }
+
+    Ok(())
+}
+
+fn write_general_setter_and_getter(f: &mut File, pm_type: String, pm_name: String, short_name: String, pm_id_name: String, is_const: bool) -> Result<(), Box<dyn std::error::Error>> {
+    writeln!(f, r#"
+        #[allow(non_camel_case_types)]
+        pub type {pm_name}_t = {pm_type};
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_{pm_name}(
+            interface: *const CInterfaceInstance,
+            {short_name}: *mut {pm_name}_t
+        ) -> EconfStatus {{
+            get_parameter::<{pm_type}>(interface, ParameterId::{pm_id_name}, {short_name})
+        }}
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_{pm_name}_quick(
+            interface: *const CInterfaceInstance
+        ) -> {pm_name}_t {{
+            get_parameter_quick::<{pm_type}>(interface, ParameterId::{pm_id_name})
+        }}
+    "#)?;
+            
+    if !is_const {
+        writeln!(f, r#"
+            #[unsafe(no_mangle)]
+            pub extern "C" fn set_{pm_name}(
+                interface: *const CInterfaceInstance,
+                {short_name}: {pm_name}_t,
+                {short_name}_result: *mut {pm_name}_t
+            ) -> EconfStatus {{
+                set_parameter::<{pm_type}>(interface, ParameterId::{pm_id_name}, {short_name}, {short_name}_result)
+            }}
+        "#)?;
+    }
+
+    Ok(())
+}
+
+fn write_enum_setter_and_getter(f: &mut File, p_enum_name: String, pm_name: String, short_name: String, pm_id_name: String, is_const: bool, validation: &ValidationMethod, enums: &mut HashSet<String>) -> Result<(), Box<dyn std::error::Error>> {
+    match &validation {
+        ValidationMethod::AllowedValues { values, names } => {
+            let vals = values
+                .iter()
+                .map(|v| v)
+                .collect::<Vec<_>>();
+            let str_names = names
+                .iter()
+                .map(|v| v)
+                .collect::<Vec<_>>();
+
+            if !enums.contains(&p_enum_name)
+            {
+                enums.insert(p_enum_name.clone());
+                writeln!(f, "#[repr(i32)]")?;
+                writeln!(f, "#[allow(non_camel_case_types)]")?;
+                writeln!(f, "#[allow(non_local_definitions)]")?;
+                writeln!(f, "#[derive(Default, FromPrimitive)]")?;
+                writeln!(f, "pub enum {p_enum_name}_t {{")?;
+                writeln!(f, "#[default]")?;
+                for (val, name) in vals.iter().zip(str_names.iter()) {
+                    writeln!(f, "    {} = {},", name, value_to_string(val))?;
+                }
+                writeln!(f, "}}\n")?;
+            }
+        }
+        _ => todo!("Probably something wrong"),
+    };  
+
+    writeln!(f, r#"
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_{pm_name}(
+            interface: *const CInterfaceInstance,
+            {short_name}: *mut {p_enum_name}_t
+        ) -> EconfStatus {{
+            let parameter_i32 = {short_name} as *mut i32;
+            get_parameter::<i32>(interface, ParameterId::{pm_id_name}, parameter_i32)
+        }}
+
+        #[unsafe(no_mangle)]
+        pub extern "C" fn get_{pm_name}_quick(
+            interface: *const CInterfaceInstance
+        ) -> {p_enum_name}_t {{
+            let parameter_i32 = get_parameter_quick::<i32>(interface, ParameterId::{pm_id_name});
+            FromPrimitive::from_i32(parameter_i32).unwrap_or_else(|| {{
+                {p_enum_name}_t::default()
+            }})
+        }}
+    "#)?;
+            
+    if !is_const {
+        writeln!(f, r#"
+            #[unsafe(no_mangle)]
+            pub extern "C" fn set_{pm_name}(
+                interface: *const CInterfaceInstance,
+                {short_name}: {p_enum_name}_t,
+                {short_name}_result: *mut {p_enum_name}_t
+            ) -> EconfStatus {{
+                let parameter_i32 = {short_name} as i32;
+                let parameter_i32_result = {short_name}_result as *mut i32;
+                set_parameter::<i32>(interface, ParameterId::{pm_id_name}, parameter_i32, parameter_i32_result)
+            }}
+        "#)?;
     }
 
     Ok(())
@@ -330,7 +452,7 @@ pub fn convert_enum_declarations(input: &str) -> String {
             
             if let Some(typedef_match) = typedef_re.find(&result) {
                 // Replace both with combined form
-                let replacement = format!("typedef enum {{{}}} {};", enum_body.trim(), enum_name);
+                let replacement = format!("typedef enum {{\n  {}\n}} {};", enum_body.trim(), enum_name);
                 let range = enum_cap.get(0).unwrap().start()..typedef_match.end();
                 result.replace_range(range, &replacement);
             }

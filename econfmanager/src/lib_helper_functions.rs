@@ -1,8 +1,17 @@
-use std::{any::type_name, time::Duration};
+use std::{
+    any::type_name,
+    ffi::{CStr, CString, c_char},
+    ptr, slice,
+    time::Duration,
+};
 
 use log::{debug, error};
 
-use crate::{generated::ParameterId, schema::ParameterType, CInterfaceInstance, EconfStatus, InterfaceInstance};
+use crate::{
+    CInterfaceInstance, EconfStatus, InterfaceInstance,
+    generated::ParameterId,
+    schema::{ParameterType, ParameterValue},
+};
 
 const LOCK_TRYING_DURATION: Duration = Duration::from_secs(1);
 
@@ -12,22 +21,15 @@ macro_rules! validate_ptr {
             error!("Null pointer provided to {}", stringify!($ptr));
             return EconfStatus::StatusError;
         }
-        // if ($ptr as usize) % std::mem::align_of::<$type>() != 0 {
-        //     error!("Unaligned pointer provided to {}", stringify!($ptr));
-        //     return EconfStatus::StatusError;
-        // }
     };
 }
 
-pub(crate) fn interface_execute<F>(
-    interface: *const CInterfaceInstance, 
-    f: F
-) -> EconfStatus 
+pub(crate) fn interface_execute<F>(interface: *const CInterfaceInstance, f: F) -> EconfStatus
 where
     F: FnOnce(&mut InterfaceInstance) -> Result<(), Box<dyn std::error::Error>>,
 {
     validate_ptr!(interface, CInterfaceInstance);
-    
+
     let interface = unsafe { &*interface };
     match interface.with_lock(|lock| {
         lock.try_lock_for(LOCK_TRYING_DURATION)
@@ -41,9 +43,48 @@ where
                 error!("Operation failed: {}", e);
                 EconfStatus::StatusError
             })
-    }){
+    }) {
         Ok(status) => status,
         Err(_) => EconfStatus::StatusError,
+    }
+}
+
+pub(crate) fn get_parameter_quick<T: ParameterType>(
+    interface: *const CInterfaceInstance,
+    id: ParameterId,
+) -> T {
+    debug!("Get ID {} quick:{}", id as usize, type_name::<T>());
+    let mut out_parameter = None;
+    interface_execute(interface, |interface| match interface.get(id, false) {
+        Ok(parameter) => {
+            if let Some(ret_val) = T::from_parameter_value(parameter) {
+                out_parameter = Some(ret_val);
+                Ok(())
+            } else {
+                error!("Error converting ID {}:{}", id as usize, type_name::<T>());
+                Err(format!("Error converting ID {}:{}", id as usize, type_name::<T>()).into())
+            }
+        }
+        Err(e) => {
+            error!(
+                "Error getting ID {}:{} - {}",
+                id as usize,
+                type_name::<T>(),
+                e
+            );
+            Err(format!(
+                "Error getting ID {}:{} - {}",
+                id as usize,
+                type_name::<T>(),
+                e
+            )
+            .into())
+        }
+    });
+    match out_parameter {
+        Some(val) => val,
+        // TODO: This may not be correct
+        None => T::from_parameter_value(ParameterValue::ValNone).unwrap(),
     }
 }
 
@@ -53,21 +94,34 @@ pub(crate) fn get_parameter<T: ParameterType>(
     out_parameter: *mut T,
 ) -> EconfStatus {
     debug!("Get ID {}:{}", id as usize, type_name::<T>());
-    interface_execute(interface, |interface| {
-        match interface.get(id, false) {
-            Ok(parameter) => {
-                if let Some(ret_val) = T::from_parameter_value(parameter) {
-                    unsafe { *out_parameter = ret_val };
-                    Ok(())
-                } else {
-                    error!("Error converting ID {}:{}", id as usize, type_name::<T>());
-                    Err(format!("Error converting ID {}:{}", id as usize, type_name::<T>()).into())
+    interface_execute(interface, |interface| match interface.get(id, false) {
+        Ok(parameter) => {
+            if let Some(ret_val) = T::from_parameter_value(parameter) {
+                if out_parameter.is_null() {
+                    error!("Null pointer provided for {}", id as usize);
+                    return Err(format!("Null pointer provided for {}", id as usize).into());
                 }
+                unsafe { *out_parameter = ret_val };
+                Ok(())
+            } else {
+                error!("Error converting ID {}:{}", id as usize, type_name::<T>());
+                Err(format!("Error converting ID {}:{}", id as usize, type_name::<T>()).into())
             }
-            Err(e) => {
-                error!("Error getting ID {}:{} - {}", id as usize, type_name::<T>(), e);
-                Err(format!("Error getting ID {}:{} - {}", id as usize, type_name::<T>(), e).into())
-            }
+        }
+        Err(e) => {
+            error!(
+                "Error getting ID {}:{} - {}",
+                id as usize,
+                type_name::<T>(),
+                e
+            );
+            Err(format!(
+                "Error getting ID {}:{} - {}",
+                id as usize,
+                type_name::<T>(),
+                e
+            )
+            .into())
         }
     })
 }
@@ -75,15 +129,17 @@ pub(crate) fn get_parameter<T: ParameterType>(
 pub(crate) fn set_parameter<T: ParameterType>(
     interface: *const CInterfaceInstance,
     id: ParameterId,
+    parameter: T,
     out_parameter: *mut T,
 ) -> EconfStatus {
     debug!("Set ID {}:{}", id as usize, type_name::<T>());
     interface_execute(interface, |interface| {
-        let parameter = unsafe { (*out_parameter).clone() };
         match interface.set(id, parameter.to_parameter_value()) {
             Ok(parameter) => {
                 if let Some(ret_val) = T::from_parameter_value(parameter) {
-                    unsafe { *out_parameter = ret_val };
+                    if !out_parameter.is_null() {
+                        unsafe { *out_parameter = ret_val };
+                    }
                     Ok(())
                 } else {
                     error!("Error converting ID {}:{}", id as usize, type_name::<T>());
@@ -91,9 +147,182 @@ pub(crate) fn set_parameter<T: ParameterType>(
                 }
             }
             Err(e) => {
-                error!("Error setting ID {}:{} - {}", id as usize, type_name::<T>(), e);
-                Err(format!("Error setting ID {}:{} - {}", id as usize, type_name::<T>(), e).into())
+                error!(
+                    "Error setting ID {}:{} - {}",
+                    id as usize,
+                    type_name::<T>(),
+                    e
+                );
+                Err(format!(
+                    "Error setting ID {}:{} - {}",
+                    id as usize,
+                    type_name::<T>(),
+                    e
+                )
+                .into())
             }
+        }
+    })
+}
+
+pub fn copy_string_to_c_buffer(
+    s: &str,
+    out_c_string: *mut c_char,
+    max_len: usize,
+    id: ParameterId,
+) -> Result<(), String> {
+    if out_c_string.is_null() {
+        let err = format!("Null pointer provided for {}", id as usize);
+        return Err(err);
+    }
+
+    let c_str = match CString::new(s) {
+        Ok(c) => c,
+        Err(e) => {
+            let err = format!("String contains null bytes: {} for {}", e, id as usize);
+            return Err(err);
+        }
+    };
+
+    let bytes = c_str.as_bytes_with_nul();
+
+    if bytes.len() > max_len {
+        let err = format!(
+            "String too long (needs {} bytes, buffer has {} for {})",
+            bytes.len(),
+            max_len,
+            id as usize
+        );
+        return Err(err);
+    }
+
+    unsafe { ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, out_c_string, bytes.len()) };
+
+    Ok(())
+}
+
+fn c_char_to_string(c_string: *const c_char, id: ParameterId) -> Result<String, String> {
+    if c_string.is_null() {
+        return Err(format!("Null pointer provided for {}", id as usize).into());
+    }
+
+    unsafe {
+        CStr::from_ptr(c_string)
+            .to_str()
+            .map(|s| s.to_owned())
+            .map_err(|e| format!("Invalid UTF-8 string: {} for {}", e, id as usize))
+    }
+}
+
+pub(crate) fn get_string(
+    interface: *const CInterfaceInstance,
+    id: ParameterId,
+    out_c_string: *mut c_char,
+    max_len: usize,
+) -> EconfStatus {
+    debug!("Get ID {}: string", id as usize);
+    interface_execute(interface, |interface| match interface.get(id, false) {
+        Ok(parameter) => match parameter {
+            ParameterValue::ValString(val_str) => {
+                copy_string_to_c_buffer(&val_str, out_c_string, max_len, id)?;
+                Ok(())
+            }
+            _ => {
+                return Err(format!("Wrong type requested for ID {}: string", id as usize).into());
+            }
+        },
+        Err(e) => Err(format!("Error getting ID {}: string - {}", id as usize, e).into()),
+    })
+}
+
+pub(crate) fn set_string(
+    interface: *const CInterfaceInstance,
+    id: ParameterId,
+    c_string: *const c_char,
+) -> EconfStatus {
+    debug!("Set ID {}: string", id as usize);
+    interface_execute(interface, |interface| {
+        let rust_string = match c_char_to_string(c_string, id) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Invalid string for ID {}: {}", id as usize, e);
+                return Err(e.into());
+            }
+        };
+        let parameter = ParameterValue::ValString(rust_string.into());
+        match interface.set(id, parameter) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Error setting ID {}: string - {}", id as usize, e).into()),
+        }
+    })
+}
+
+pub fn copy_blob_to_c_buffer(
+    blob: &[u8],
+    out_buffer: *mut u8,
+    max_len: usize,
+    id: ParameterId,
+) -> Result<usize, String> {
+    // Returns bytes copied
+    if out_buffer.is_null() {
+        return Err(format!("Null pointer provided for blob ID {}", id as usize));
+    }
+
+    if blob.len() > max_len {
+        return Err(format!(
+            "Blob too large (needs {} bytes, buffer has {} for ID {}",
+            blob.len(),
+            max_len,
+            id as usize
+        ));
+    }
+
+    unsafe { ptr::copy_nonoverlapping(blob.as_ptr(), out_buffer, blob.len()) };
+    Ok(blob.len())
+}
+
+pub fn c_buffer_to_blob(buffer: *const u8, len: usize, id: ParameterId) -> Result<Vec<u8>, String> {
+    if buffer.is_null() {
+        return Err(format!("Null pointer provided for blob ID {}", id as usize));
+    }
+
+    Ok(unsafe { slice::from_raw_parts(buffer, len).to_vec() })
+}
+
+pub(crate) fn get_blob(
+    interface: *const CInterfaceInstance,
+    id: ParameterId,
+    out_buffer: *mut u8,
+    max_len: usize,
+    out_len: *mut usize,
+) -> EconfStatus {
+    debug!("Get ID {}: blob", id as usize);
+    interface_execute(interface, |interface| match interface.get(id, false) {
+        Ok(parameter) => match parameter {
+            ParameterValue::ValBlob(blob) => {
+                let bytes_copied = copy_blob_to_c_buffer(&blob, out_buffer, max_len, id)?;
+                unsafe { *out_len = bytes_copied };
+                Ok(())
+            }
+            _ => Err(format!("Wrong type requested for ID {}: blob", id as usize).into()),
+        },
+        Err(e) => Err(format!("Error getting ID {}: blob - {}", id as usize, e).into()),
+    })
+}
+
+pub(crate) fn set_blob(
+    interface: *const CInterfaceInstance,
+    id: ParameterId,
+    buffer: *const u8,
+    len: usize,
+) -> EconfStatus {
+    debug!("Set ID {}: blob ({} bytes)", id as usize, len);
+    interface_execute(interface, |interface| {
+        let blob = c_buffer_to_blob(buffer, len, id)?;
+        let parameter = ParameterValue::ValBlob(blob);
+        match interface.set(id, parameter) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Error setting ID {}: blob - {}", id as usize, e).into()),
         }
     })
 }
