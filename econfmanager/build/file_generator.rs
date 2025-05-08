@@ -1,8 +1,10 @@
+use std::fs;
 use std::{collections::HashSet, fs::File};
 use std::io::Write;
 use std::path::Path;
 
 use crate::schema::{self, Group, ParameterValueType};
+use regex::Regex;
 use schema::{Parameter, ParameterValue, ValidationMethod};
 
 
@@ -298,5 +300,51 @@ pub(crate) fn generate_parameter_functions(
         }
     }
 
+    Ok(())
+}
+
+/// Converts C-style enum declarations with separate typedefs into combined typedef enum form
+/// Example:
+/// Input:  "enum CameraType_t { SOURCE_SIMULATOR = 0, SOURCE_CANON = 1 }; typedef int32_t CameraType_t;"
+/// Output: "typedef enum { SOURCE_SIMULATOR = 0, SOURCE_CANON = 1 } CameraType_t;"
+pub fn convert_enum_declarations(input: &str) -> String {
+    // First pass: Find all enum declarations and their names
+    let enum_decl_re = Regex::new(r"(?s)enum\s+(\w+)\s*\{(.*?)\}\s*;").unwrap();
+
+    let mut result = input.to_string();
+    
+    // Find all enum declarations and collect their names
+    let enum_names: Vec<String> = enum_decl_re.captures_iter(input)
+        .map(|cap| cap[1].to_string())
+        .collect();
+
+    // For each enum name, find and convert matching typedefs
+    for enum_name in enum_names {
+        // Find the enum declaration
+        if let Some(enum_cap) = enum_decl_re.captures(&result) {
+            let enum_body = &enum_cap[2];
+            
+            // Find the corresponding typedef
+            let typedef_pattern = format!(r"typedef\s+\w+\s+{}\s*;", enum_name);
+            let typedef_re = Regex::new(&typedef_pattern).unwrap();
+            
+            if let Some(typedef_match) = typedef_re.find(&result) {
+                // Replace both with combined form
+                let replacement = format!("typedef enum {{{}}} {};", enum_body.trim(), enum_name);
+                let range = enum_cap.get(0).unwrap().start()..typedef_match.end();
+                result.replace_range(range, &replacement);
+            }
+        }
+    }
+    
+    result
+}
+
+pub(crate) fn process_convert_c_file(input_path: &Path, output_path: &Path) -> std::io::Result<()> {
+    let content = fs::read_to_string(input_path)?;
+    let converted = convert_enum_declarations(&content);
+    let mut output_file = fs::File::create(output_path)?;
+    output_file.write_all(converted.as_bytes())?;
+    
     Ok(())
 }

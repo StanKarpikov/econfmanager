@@ -8,7 +8,7 @@ pub mod file_generator;
 
 #[path = "src/schema.rs"]
 pub mod schema;
-use file_generator::{generate_parameter_enum, generate_parameter_functions, generate_parameter_ids};
+use file_generator::{generate_parameter_enum, generate_parameter_functions, generate_parameter_ids, process_convert_c_file};
 use schema::SchemaManager;
 
 const OPTIONS_PROTO_FILE: &str = "options.proto";
@@ -104,7 +104,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     generate_parameter_functions(&parameters, generated_dir.to_str().unwrap().to_owned())
         .unwrap_or_else(|op|{panic!("Error generating parameters functions: {}", op)});
 
-    let header_path = build_dir.join("econfmanager.h");
+    let header_path: PathBuf = build_dir.join("econfmanager.h");
+    let header_path_copy = header_path.clone();
     let status = Command::new("cbindgen")
         .arg("--crate")
         .arg("econfmanager")
@@ -112,6 +113,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(header_path)
         .status()
         .expect("Failed to run cbindgen");
+
+    process_convert_c_file(&header_path_copy, &header_path_copy)?;
 
     if !status.success() {
         panic!("cbindgen failed with status: {}", status);
