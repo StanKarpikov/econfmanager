@@ -1,3 +1,20 @@
 language = "C"
 style = "type"
-header = "#pragma once"
+
+header = """/*
+* Auto-generated - DO NOT EDIT
+* Generated from Rust FFI bindings
+*/
+
+#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+"""
+
+trailer = """
+#ifdef __cplusplus
+} // extern "C"
+#endif
+"""

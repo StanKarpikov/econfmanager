@@ -8,7 +8,7 @@ void update_callback(ParameterId id, void* arg)
 {
     CInterfaceInstance* interface = (CInterfaceInstance*)arg;
 
-    printf("Parameter updated: %lu (arg: %p)\n", id, arg);
+    printf("Parameter updated: %u (arg: %p)\n", id, arg);
     switch(id)
     {
         case IMAGE_ACQUISITION_IMAGE_WIDTH:
@@ -33,7 +33,9 @@ void update_callback(ParameterId id, void* arg)
                 }
             }
             break;
-    }
+        default:
+                break;
+            }
 }
 
 int main(int argc, char *argv[]) {
@@ -68,16 +70,16 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to add callback\n");
     }
 
-    device_serial_number_t serial_number;
-    status = get_device_serial_number(interface, &serial_number);
+    char serial_number[255] = {0};
+    status = get_device_serial_number(interface, serial_number, sizeof(serial_number));
     if (status == StatusOk) {
-        printf("Current serial number: %d\n", serial_number);
+        printf("Current serial number: %s\n", serial_number);
     } else {
         fprintf(stderr, "Failed to get serial number\n");
     }
 
-    device_serial_number_t new_serial = serial_number+1;
-    status = set_device_serial_number(interface, &new_serial);
+    sprintf(serial_number, "new-serial-012345");
+    status = set_device_serial_number(interface, serial_number);
     if (status != StatusOk) {
         fprintf(stderr, "Failed to set serial number\n");
     }
