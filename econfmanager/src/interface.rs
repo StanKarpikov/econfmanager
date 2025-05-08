@@ -14,7 +14,7 @@ use crate::database_utils::{DatabaseManager, Status};
 use crate::event_receiver::EventReceiver;
 use crate::generated;
 use crate::notifier::Notifier;
-use crate::schema::ParameterValue;
+use crate::schema::{ParameterValue, ParameterValueType};
 
 use generated::{GROUPS_DATA, PARAMETER_DATA, PARAMETERS_NUM, ParameterId};
 
@@ -185,16 +185,17 @@ impl InterfaceInstance {
 
     pub fn get_type_string(&self, id: ParameterId) -> String {
         match &PARAMETER_DATA[id as usize].value_type {
-            ParameterValue::ValBool(_) => "Bool".to_owned(),
-            ParameterValue::ValI32(_) => "I32".to_owned(),
-            ParameterValue::ValU32(_) => "U32".to_owned(),
-            ParameterValue::ValI64(_) => "I64".to_owned(),
-            ParameterValue::ValU64(_) => "U64".to_owned(),
-            ParameterValue::ValF32(_) => "F32".to_owned(),
-            ParameterValue::ValF64(_) => "F64".to_owned(),
-            ParameterValue::ValString(_) => "String".to_owned(),
-            ParameterValue::ValBlob(_) => "Blob".to_owned(),
-            ParameterValue::ValPath(_) => todo!(),
+            ParameterValueType::TypeBool => "Bool".to_owned(),
+            ParameterValueType::TypeI32 => "I32".to_owned(),
+            ParameterValueType::TypeU32 => "U32".to_owned(),
+            ParameterValueType::TypeI64 => "I64".to_owned(),
+            ParameterValueType::TypeU64 => "U64".to_owned(),
+            ParameterValueType::TypeF32 => "F32".to_owned(),
+            ParameterValueType::TypeF64 => "F64".to_owned(),
+            ParameterValueType::TypeString => "String".to_owned(),
+            ParameterValueType::TypeBlob => "Blob".to_owned(),
+            ParameterValueType::TypeEnum(_) => "I32".to_owned(),
+            ParameterValueType::TypeNone => "None".to_owned(),
         }
     }
 
@@ -214,6 +215,8 @@ impl InterfaceInstance {
             ParameterValue::ValString(s) => s.to_string(),
             ParameterValue::ValBlob(data) => BASE64_STANDARD.encode(data),
             ParameterValue::ValPath(_) => todo!(),
+            ParameterValue::ValNone => todo!(),
+            ParameterValue::ValEnum(i) => i.to_string(),
         }
     }
 
@@ -221,41 +224,45 @@ impl InterfaceInstance {
         let param_type = &PARAMETER_DATA[id as usize].value_type;
 
         let converted_value = match param_type {
-            ParameterValue::ValBool(_) => match value.to_lowercase().as_str() {
-                "true" | "1" => ParameterValue::ValBool(true),
-                "false" | "0" => ParameterValue::ValBool(false),
-                _ => return Err(anyhow!("Expected 'true' or 'false' for boolean")),
-            },
-            ParameterValue::ValI32(_) => value
-                .parse::<i32>()
-                .map(ParameterValue::ValI32)
-                .map_err(|_| anyhow!("Expected a 32-bit integer"))?,
-            ParameterValue::ValU32(_) => value
-                .parse::<u32>()
-                .map(ParameterValue::ValU32)
-                .map_err(|_| anyhow!("Expected an unsigned 32-bit integer"))?,
-            ParameterValue::ValI64(_) => value
-                .parse::<i64>()
-                .map(ParameterValue::ValI64)
-                .map_err(|_| anyhow!("Expected a 64-bit integer"))?,
-            ParameterValue::ValU64(_) => value
-                .parse::<u64>()
-                .map(ParameterValue::ValU64)
-                .map_err(|_| anyhow!("Expected an unsigned 64-bit integer"))?,
-            ParameterValue::ValF32(_) => value
-                .parse::<f32>()
-                .map(ParameterValue::ValF32)
-                .map_err(|_| anyhow!("Expected a 32-bit float"))?,
-            ParameterValue::ValF64(_) => value
-                .parse::<f64>()
-                .map(ParameterValue::ValF64)
-                .map_err(|_| anyhow!("Expected a 64-bit float"))?,
-            ParameterValue::ValString(_) => ParameterValue::ValString(value.to_string().into()),
-            ParameterValue::ValBlob(_) => {
-                let decoded = BASE64_STANDARD.decode(value)?;
-                ParameterValue::ValBlob(decoded)
-            }
-            ParameterValue::ValPath(_) => todo!(),
+            ParameterValueType::TypeBool => match value.to_lowercase().as_str() {
+                        "true" | "1" => ParameterValue::ValBool(true),
+                        "false" | "0" => ParameterValue::ValBool(false),
+                        _ => return Err(anyhow!("Expected 'true' or 'false' for boolean")),
+                    },
+            ParameterValueType::TypeI32 => value
+                        .parse::<i32>()
+                        .map(ParameterValue::ValI32)
+                        .map_err(|_| anyhow!("Expected a 32-bit integer"))?,
+            ParameterValueType::TypeU32 => value
+                        .parse::<u32>()
+                        .map(ParameterValue::ValU32)
+                        .map_err(|_| anyhow!("Expected an unsigned 32-bit integer"))?,
+            ParameterValueType::TypeI64 => value
+                        .parse::<i64>()
+                        .map(ParameterValue::ValI64)
+                        .map_err(|_| anyhow!("Expected a 64-bit integer"))?,
+            ParameterValueType::TypeU64 => value
+                        .parse::<u64>()
+                        .map(ParameterValue::ValU64)
+                        .map_err(|_| anyhow!("Expected an unsigned 64-bit integer"))?,
+            ParameterValueType::TypeF32 => value
+                        .parse::<f32>()
+                        .map(ParameterValue::ValF32)
+                        .map_err(|_| anyhow!("Expected a 32-bit float"))?,
+            ParameterValueType::TypeF64 => value
+                        .parse::<f64>()
+                        .map(ParameterValue::ValF64)
+                        .map_err(|_| anyhow!("Expected a 64-bit float"))?,
+            ParameterValueType::TypeString => ParameterValue::ValString(value.to_string().into()),
+            ParameterValueType::TypeBlob => {
+                        let decoded = BASE64_STANDARD.decode(value)?;
+                        ParameterValue::ValBlob(decoded)
+                    }
+            ParameterValueType::TypeEnum(_) => value
+                        .parse::<i32>()
+                        .map(ParameterValue::ValEnum)
+                        .map_err(|_| anyhow!("Expected a 32-bit integer"))?,
+            ParameterValueType::TypeNone => ParameterValue::ValNone,
         };
 
         Ok(converted_value)
@@ -265,46 +272,50 @@ impl InterfaceInstance {
         let param_type = &PARAMETER_DATA[id as usize].value_type;
 
         let converted_value = match param_type {
-            ParameterValue::ValBool(_) => value
-                .as_bool()
-                .map(ParameterValue::ValBool)
-                .ok_or_else(|| anyhow!("Expected a boolean"))?,
-            ParameterValue::ValI32(_) => value
-                .as_i64()
-                .map(|v| ParameterValue::ValI32(v as i32))
-                .ok_or_else(|| anyhow!("Expected an integer"))?,
-            ParameterValue::ValU32(_) => value
-                .as_u64()
-                .map(|v| ParameterValue::ValU32(v as u32))
-                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
-            ParameterValue::ValI64(_) => value
-                .as_i64()
-                .map(ParameterValue::ValI64)
-                .ok_or_else(|| anyhow!("Expected an integer"))?,
-            ParameterValue::ValU64(_) => value
-                .as_u64()
-                .map(ParameterValue::ValU64)
-                .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
-            ParameterValue::ValF32(_) => value
-                .as_f64()
-                .map(|v| ParameterValue::ValF32(v as f32))
-                .ok_or_else(|| anyhow!("Expected a float"))?,
-            ParameterValue::ValF64(_) => value
-                .as_f64()
-                .map(ParameterValue::ValF64)
-                .ok_or_else(|| anyhow!("Expected a float"))?,
-            ParameterValue::ValString(_) => value
-                .as_str()
-                .map(|v| ParameterValue::ValString(v.to_string().into()))
-                .ok_or_else(|| anyhow!("Expected a string"))?,
-            ParameterValue::ValBlob(_) => {
-                let base64_str = value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("Expected a base64 string"))?;
-                let decoded = BASE64_STANDARD.decode(base64_str)?;
-                ParameterValue::ValBlob(decoded)
-            }
-            ParameterValue::ValPath(_) => todo!(),
+            ParameterValueType::TypeBool => value
+                        .as_bool()
+                        .map(ParameterValue::ValBool)
+                        .ok_or_else(|| anyhow!("Expected a boolean"))?,
+            ParameterValueType::TypeI32 => value
+                        .as_i64()
+                        .map(|v| ParameterValue::ValI32(v as i32))
+                        .ok_or_else(|| anyhow!("Expected an integer"))?,
+            ParameterValueType::TypeU32 => value
+                        .as_u64()
+                        .map(|v| ParameterValue::ValU32(v as u32))
+                        .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
+            ParameterValueType::TypeI64 => value
+                        .as_i64()
+                        .map(ParameterValue::ValI64)
+                        .ok_or_else(|| anyhow!("Expected an integer"))?,
+            ParameterValueType::TypeU64 => value
+                        .as_u64()
+                        .map(ParameterValue::ValU64)
+                        .ok_or_else(|| anyhow!("Expected an unsigned integer"))?,
+            ParameterValueType::TypeF32 => value
+                        .as_f64()
+                        .map(|v| ParameterValue::ValF32(v as f32))
+                        .ok_or_else(|| anyhow!("Expected a float"))?,
+            ParameterValueType::TypeF64 => value
+                        .as_f64()
+                        .map(ParameterValue::ValF64)
+                        .ok_or_else(|| anyhow!("Expected a float"))?,
+            ParameterValueType::TypeString => value
+                        .as_str()
+                        .map(|v| ParameterValue::ValString(v.to_string().into()))
+                        .ok_or_else(|| anyhow!("Expected a string"))?,
+            ParameterValueType::TypeBlob => {
+                        let base64_str = value
+                            .as_str()
+                            .ok_or_else(|| anyhow!("Expected a base64 string"))?;
+                        let decoded = BASE64_STANDARD.decode(base64_str)?;
+                        ParameterValue::ValBlob(decoded)
+                    }
+            ParameterValueType::TypeEnum(_) => value
+                        .as_i64()
+                        .map(|v| ParameterValue::ValI32(v as i32))
+                        .ok_or_else(|| anyhow!("Expected an integer"))?,
+            ParameterValueType::TypeNone => ParameterValue::ValNone,
         };
 
         Ok(converted_value)

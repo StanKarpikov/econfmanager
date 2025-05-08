@@ -11,6 +11,7 @@ pub(crate) struct SchemaManager {
 #[repr(C)]
 #[derive(Clone, PartialEq, Debug)]
 pub enum ParameterValue {
+    ValNone,
     ValBool(bool),
     ValI32(i32),
     ValU32(u32),
@@ -20,7 +21,61 @@ pub enum ParameterValue {
     ValF64(f64),
     ValString(Cow<'static, str>),
     ValBlob(Vec<u8>),
+    ValEnum(i32),
     ValPath(&'static str),
+}
+
+#[repr(C)]
+#[derive(Clone, PartialEq, Debug)]
+pub enum ParameterValueType {
+    TypeNone,
+    TypeBool,
+    TypeI32,
+    TypeU32,
+    TypeI64,
+    TypeU64,
+    TypeF32,
+    TypeF64,
+    TypeString,
+    TypeBlob,
+    TypeEnum(Cow<'static, str>),
+}
+
+impl fmt::Display for ParameterValueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParameterValueType::TypeBool => write!(f, "Bool"),
+            ParameterValueType::TypeI32 => write!(f, "I32"),
+            ParameterValueType::TypeU32 => write!(f, "U32"),
+            ParameterValueType::TypeI64 => write!(f, "I64"),
+            ParameterValueType::TypeU64 => write!(f, "U64"),
+            ParameterValueType::TypeF32 => write!(f, "F32"),
+            ParameterValueType::TypeF64 => write!(f, "F64"),
+            ParameterValueType::TypeString => write!(f, "String"),
+            ParameterValueType::TypeBlob => write!(f, "Blob"),
+            ParameterValueType::TypeEnum(v) => write!(f, "Enum: {}", v),
+            ParameterValueType::TypeNone => write!(f, "None"),
+        }
+    }
+}
+
+impl ParameterValue {
+    pub fn parameter_type(&self) -> ParameterValueType {
+        match self {
+            ParameterValue::ValNone => ParameterValueType::TypeNone,
+            ParameterValue::ValBool(_) => ParameterValueType::TypeBool,
+            ParameterValue::ValI32(_) => ParameterValueType::TypeI32,
+            ParameterValue::ValU32(_) => ParameterValueType::TypeU32,
+            ParameterValue::ValI64(_) => ParameterValueType::TypeI64,
+            ParameterValue::ValU64(_) => ParameterValueType::TypeU64,
+            ParameterValue::ValF32(_) => ParameterValueType::TypeF32,
+            ParameterValue::ValF64(_) => ParameterValueType::TypeF64,
+            ParameterValue::ValString(_) => ParameterValueType::TypeString,
+            ParameterValue::ValBlob(_) => ParameterValueType::TypeBlob,
+            ParameterValue::ValEnum(_) => ParameterValueType::TypeEnum(Cow::Borrowed("")),
+            ParameterValue::ValPath(_) => ParameterValueType::TypeBlob,
+        }
+    }
 }
 
 impl Default for ParameterValue {
@@ -44,10 +99,12 @@ impl Serialize for ParameterValue {
             ParameterValue::ValF64(v) => v.serialize(serializer),
             ParameterValue::ValString(v) => v.serialize(serializer),
             ParameterValue::ValBlob(v) => {
-                let encoded = BASE64_STANDARD.encode(v);
-                encoded.serialize(serializer)
-            },
+                        let encoded = BASE64_STANDARD.encode(v);
+                        encoded.serialize(serializer)
+                    },
+            ParameterValue::ValEnum(v) => v.serialize(serializer),
             ParameterValue::ValPath(_) => todo!(),
+            ParameterValue::ValNone => todo!(),
         }
     }
 }
@@ -64,17 +121,19 @@ impl fmt::Display for ParameterValue {
             ParameterValue::ValF64(v) => write!(f, "F64: {:+.4e}", v),
             ParameterValue::ValString(v) => write!(f, "String: {}", v),
             ParameterValue::ValBlob(v) => {
-                                let display_len = std::cmp::min(8, v.len());
-                                write!(f, "[")?;
-                                for byte in &v[..display_len] {
-                                    write!(f, "{:02X} ", byte)?;
-                                }
-                                if v.len() > display_len {
-                                    write!(f, "... ({} bytes)", v.len())?;
-                                }
-                                write!(f, "]")
-                            }
+                                                let display_len = std::cmp::min(8, v.len());
+                                                write!(f, "[")?;
+                                                for byte in &v[..display_len] {
+                                                    write!(f, "{:02X} ", byte)?;
+                                                }
+                                                if v.len() > display_len {
+                                                    write!(f, "... ({} bytes)", v.len())?;
+                                                }
+                                                write!(f, "]")
+                                            }
             ParameterValue::ValPath(p) => write!(f, "Path: {}", p),
+            ParameterValue::ValEnum(v) => write!(f, "Enum: {}", v),
+            ParameterValue::ValNone => write!(f, "None"),
         }
     }
 }
@@ -165,6 +224,7 @@ impl_parameter_type!(c_char => Cow, ValString);
 impl_parameter_type!(Vec<u8>, ValBlob);
 
 #[repr(C)]
+#[derive (Debug)]
 pub enum ValidationMethod {
     None,           // Default: no validation
     Range {
@@ -179,8 +239,9 @@ pub enum ValidationMethod {
 }
 
 #[repr(C)]
+#[derive (Debug)]
 pub struct Parameter {
-    pub value_type: ParameterValue,
+    pub value_type: ParameterValueType,
     pub value_default: ParameterValue,
     pub name_id: &'static str,
     pub validation: ValidationMethod,
@@ -243,27 +304,27 @@ impl SchemaManager {
         Ok(Self { config_descriptor, file_descriptor })
     }
 
-    fn convert_to_parameter_value(reference: &ParameterValue, value: &Value) -> Option<ParameterValue> {
+    fn convert_to_parameter_value(value_type: &ParameterValueType, value: &Value) -> Option<ParameterValue> {
         let (_, value) = value.as_message().unwrap().fields().next().unwrap();
         match value {
             Value::Bool(v) => Some(ParameterValue::ValBool(*v)),
-            Value::I32(v) => Some(ParameterValue::ValI32(*v)),
+            Value::I32(v) =>  Some(ParameterValue::ValI32(*v)),
             Value::U32(v) => Some(ParameterValue::ValU32(*v)),
             Value::I64(v) => Some(ParameterValue::ValI64(*v)),
             Value::U64(v) => Some(ParameterValue::ValU64(*v)),
             Value::F32(v) => Some(ParameterValue::ValF32(*v)),
             Value::F64(v) => Some(ParameterValue::ValF64(*v)),
             Value::String(v) => 
-                match reference {
-                    ParameterValue::ValString(_) => Some(ParameterValue::ValString(v.clone().into())),
-                    ParameterValue::ValBlob(_) => Some(ParameterValue::ValPath(Box::leak(Box::new(v.clone())))),
+                match value_type {
+                    ParameterValueType::TypeString => Some(ParameterValue::ValString(v.clone().into())),
+                    ParameterValueType::TypeBlob => Some(ParameterValue::ValPath(Box::leak(Box::new(v.clone())))),
                     _ => None
                 },
             Value::Message(msg) => {
-                match reference {
-                    ParameterValue::ValI32(_) => {
+                match value_type {
+                    ParameterValueType::TypeEnum(_) => {
                         if let Some((_, value)) = msg.fields().next() {
-                            Some(ParameterValue::ValI32(value.as_enum_number().unwrap()))
+                            Some(ParameterValue::ValEnum(value.as_enum_number().unwrap()))
                         }
                         else {
                             todo!("Only custom_type oneof is supported at the moment");
@@ -273,9 +334,9 @@ impl SchemaManager {
                 }
             },
             Value::EnumNumber(enum_value) => {
-                Some(ParameterValue::ValI32(*enum_value as i32))
+                Some(ParameterValue::ValEnum(*enum_value as i32))
             },
-            _ => None
+            _ => todo!("Unknown type")
         }
     }
 
@@ -309,23 +370,25 @@ impl SchemaManager {
                         let field_type = pm_field.kind();
                         let mut parameter = Parameter{ 
                             value_type: match field_type {
-                                prost_reflect::Kind::Double => ParameterValue::ValF64(0.0),
-                                prost_reflect::Kind::Float => ParameterValue::ValF32(0.0),
-                                prost_reflect::Kind::Int32 => ParameterValue::ValI32(0),
-                                prost_reflect::Kind::Int64 => ParameterValue::ValI64(0),
-                                prost_reflect::Kind::Uint32 => ParameterValue::ValU32(0),
-                                prost_reflect::Kind::Uint64 => ParameterValue::ValU64(0), 
-                                prost_reflect::Kind::Bool => ParameterValue::ValBool(false),
-                                prost_reflect::Kind::String => ParameterValue::ValString(Cow::Borrowed("")),
-                                prost_reflect::Kind::Bytes => ParameterValue::ValBlob(vec![]),
+                                prost_reflect::Kind::Double => ParameterValueType::TypeF64,
+                                prost_reflect::Kind::Float => ParameterValueType::TypeF32,
+                                prost_reflect::Kind::Int32 => ParameterValueType::TypeI32,
+                                prost_reflect::Kind::Int64 => ParameterValueType::TypeI64,
+                                prost_reflect::Kind::Uint32 => ParameterValueType::TypeU32,
+                                prost_reflect::Kind::Uint64 => ParameterValueType::TypeU64, 
+                                prost_reflect::Kind::Bool => ParameterValueType::TypeBool,
+                                prost_reflect::Kind::String => ParameterValueType::TypeString,
+                                prost_reflect::Kind::Bytes => ParameterValueType::TypeBlob,
+                                prost_reflect::Kind::Enum(enum_descriptor) => {
+                                    ParameterValueType::TypeEnum(Cow::Owned(enum_descriptor.name().to_string()))
+                                },
                                 prost_reflect::Kind::Message(msg) => {
                                     // For other message types, we'll treat them as blobs
-                                    ParameterValue::ValBlob(vec![])
+                                    ParameterValueType::TypeBlob
                                 },
-                                prost_reflect::Kind::Enum(enum_descriptor) => ParameterValue::ValI32(0),
                                 _ => todo!("Unsupported paramter kind {:?}", field_type)
                             },
-                            value_default: ParameterValue::ValI32(0),
+                            value_default: ParameterValue::ValNone,
                             // NOTE: Leak is okay since this function is only called at build time
                             name_id: Box::leak(Box::new(format!("{}@{}", field.name().to_string(), pm_field.name().to_string()))), 
                             validation: ValidationMethod::None, 
@@ -370,18 +433,14 @@ impl SchemaManager {
                                 });
 
                         if let Some(value_default) = value_default {
-                            if mem::discriminant(&parameter.value_type) != mem::discriminant(&value_default)
+                            if mem::discriminant(&parameter.value_type) != mem::discriminant(&value_default.parameter_type())
                             {
-                                match parameter.value_type
-                                {
-                                    ParameterValue::ValBlob(_) => match value_default {
-                                        ParameterValue::ValPath(_) => {},
-                                        _ => return Err(format!("Field {} default value {} is of the wrong type, expected Path", parameter.name_id, value_default).into()),
-                                    }
-                                    _ => return Err(format!("Field {} default value {} is of the wrong type, expected {}", parameter.name_id, value_default, parameter.value_type).into()),
-                                }
+                                return Err(format!("Field {} default value {} is of the wrong type, expected {}", parameter.name_id, value_default, parameter.value_type).into());
                             }
                             parameter.value_default = value_default;
+                        }
+                        else {
+                            panic!("No default value found for {}/{}", field.name().to_string(), pm_field.name().to_string());
                         }
 
                         let validation = field_options.extensions()
@@ -396,8 +455,8 @@ impl SchemaManager {
                                     },
                                     1 => {
                                         ValidationMethod::Range {
-                                            min: ParameterValue::ValI32(0), // Placeholder
-                                            max: ParameterValue::ValI32(0)  // Placeholder
+                                            min: ParameterValue::ValNone, // Placeholder
+                                            max: ParameterValue::ValNone  // Placeholder
                                         }
                                     },
                                     2 => {
@@ -444,12 +503,12 @@ impl SchemaManager {
                                     .and_then(|(_, val)| Self::convert_to_parameter_value(&parameter.value_type, val))
                                     .ok_or(format!("Error: Range validation requires 'max' option for {}. Options: {}", parameter.name_id, field_options))?;
                                 
-                                if mem::discriminant(&parameter.value_type) != mem::discriminant(&max)
+                                if mem::discriminant(&parameter.value_type) != mem::discriminant(&max.parameter_type())
                                 {
                                     return Err(format!("Field {} max value {} is of the wrong type, expected {}", parameter.name_id, max, parameter.value_type).into());
                                 }
 
-                                if mem::discriminant(&parameter.value_type) != mem::discriminant(&min)
+                                if mem::discriminant(&parameter.value_type) != mem::discriminant(&min.parameter_type())
                                 {
                                     return Err(format!("Field {} min value {} is of the wrong type, expected {}", parameter.name_id, min, parameter.value_type).into());
                                 }
@@ -462,10 +521,7 @@ impl SchemaManager {
                             ValidationMethod::AllowedValues { values, names} => {
                                 if let prost_reflect::Kind::Enum(enum_desc) = pm_field.kind()
                                 {
-                                    // for val in enum_desc.values() {
-                                    //     todo!("Variant: {} = {}", val.name(), val.number());
-                                    // }
-                                    *values = enum_desc.values().map(|v| ParameterValue::ValI32(v.number())).collect();
+                                    *values = enum_desc.values().map(|v| ParameterValue::ValEnum(v.number())).collect();
                                     let mut names_str: Box<[&'static str]> = enum_desc.values().map(|v| Box::leak(v.name().to_string().into_boxed_str()) as &'static str).collect();
                                     *names = Cow::Owned(names_str.into_vec());
                                 }
@@ -482,7 +538,7 @@ impl SchemaManager {
                                         .ok_or(format!("Error: AllowedValues validation requires 'allowed_values' option {}. Options: {}", parameter.name_id, field_options))?;
                                     
                                     for value in values.iter() {
-                                        if mem::discriminant(&parameter.value_type) != mem::discriminant(&value)
+                                        if mem::discriminant(&parameter.value_type) != mem::discriminant(&value.parameter_type())
                                         {
                                             return Err(format!("Field {} one of the allowed values {} is of the wrong type, expected {}", parameter.name_id, value, parameter.value_type).into());
                                         }

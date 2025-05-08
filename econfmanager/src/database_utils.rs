@@ -10,6 +10,7 @@ use std::{
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
+use crate::schema::ParameterValueType;
 use crate::{
     config::Config,
     generated::{PARAMETER_DATA, ParameterId},
@@ -432,16 +433,17 @@ impl DatabaseManager {
             let data_type = sql_value.data_type();
 
             let value_result = match parameter_def.value_type {
-                ParameterValue::ValBool(_) => Self::db_to_bool(sql_value),
-                ParameterValue::ValI32(_) => Self::db_to_i32(sql_value),
-                ParameterValue::ValU32(_) => Self::db_to_u32(sql_value),
-                ParameterValue::ValI64(_) => Self::db_to_i64(sql_value),
-                ParameterValue::ValU64(_) => Self::db_to_u64(sql_value),
-                ParameterValue::ValF32(_) => Self::db_to_f32(sql_value),
-                ParameterValue::ValF64(_) => Self::db_to_f64(sql_value),
-                ParameterValue::ValString(_) => Self::db_to_string(sql_value),
-                ParameterValue::ValBlob(_) => Self::db_to_blob(sql_value),
-                ParameterValue::ValPath(_) => todo!(),
+                ParameterValueType::TypeBool => Self::db_to_bool(sql_value),
+                ParameterValueType::TypeI32 => Self::db_to_i32(sql_value),
+                ParameterValueType::TypeU32 => Self::db_to_u32(sql_value),
+                ParameterValueType::TypeI64 => Self::db_to_i64(sql_value),
+                ParameterValueType::TypeU64 => Self::db_to_u64(sql_value),
+                ParameterValueType::TypeF32 => Self::db_to_f32(sql_value),
+                ParameterValueType::TypeF64 => Self::db_to_f64(sql_value),
+                ParameterValueType::TypeString => Self::db_to_string(sql_value),
+                ParameterValueType::TypeBlob => Self::db_to_blob(sql_value),
+                ParameterValueType::TypeEnum(_) => Self::db_to_i32(sql_value),
+                ParameterValueType::TypeNone => Self::db_to_i32(sql_value),
             };
 
             match value_result {
@@ -499,17 +501,19 @@ impl DatabaseManager {
         stmt.execute(params![
             parameter_def.name_id,
             match &value {
-                ParameterValue::ValBool(v) => v.to_sql()?,
-                ParameterValue::ValI32(v) => v.to_sql()?,
-                ParameterValue::ValU32(v) => v.to_sql()?,
-                ParameterValue::ValI64(v) => v.to_sql()?,
-                ParameterValue::ValU64(v) => v.to_sql()?,
-                ParameterValue::ValF32(v) => v.to_sql()?,
-                ParameterValue::ValF64(v) => v.to_sql()?,
-                ParameterValue::ValString(v) => v.to_sql()?,
-                ParameterValue::ValBlob(v) => v.to_sql()?,
-                ParameterValue::ValPath(_) => todo!(),
-            },
+                ParameterValue::ValBool(v)=>v.to_sql()?,
+                ParameterValue::ValI32(v)=>v.to_sql()?,
+                ParameterValue::ValU32(v)=>v.to_sql()?,
+                ParameterValue::ValI64(v)=>v.to_sql()?,
+                ParameterValue::ValU64(v)=>v.to_sql()?,
+                ParameterValue::ValF32(v)=>v.to_sql()?,
+                ParameterValue::ValF64(v)=>v.to_sql()?,
+                ParameterValue::ValString(v)=> v.to_sql()?,
+                ParameterValue::ValBlob(v)=> v.to_sql()?,
+                ParameterValue::ValPath(_)=> todo!(),
+                ParameterValue::ValNone => todo!(),
+                ParameterValue::ValEnum(v) => v.to_sql()?, 
+                            },
             Self::get_timestamp(),
         ])?;
 

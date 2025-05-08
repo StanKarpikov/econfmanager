@@ -1,6 +1,24 @@
 syntax = "proto3";
 package custom_types;
 
+enum CameraType
+{
+    SOURCE_SIMULATOR = 0;
+    SOURCE_CANON = 1;
+    SOURCE_NIKON = 2;
+};
+
+enum StatusLevel
+{
+	STATUS_DISABLED = 0;
+	STATUS_WARNING = 1;
+	STATUS_ERROR = 2;
+	STATUS_NORMAL = 3;
+};
+
 message CustomType {
-    
+    oneof custom_type {
+        CameraType camera_type = 1;
+        StatusLevel status_level = 2;
+    }
 }

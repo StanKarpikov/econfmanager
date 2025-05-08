@@ -2,6 +2,7 @@ syntax = "proto3";
 package parameters;
 
 import "options.proto";
+import "custom_types.proto";
 
 option (options.version) = 1;
 
@@ -33,6 +34,7 @@ message ImageAcquisition {
                      (options.default_value) = { val_path: "default_image.png"}];
 
     bool generation_enabled = 5 [(options.title) = "Generation Enabled",
+                                 (options.default_value) = { val_bool: true },
                                  (options.comment) = "Enable generation"];
 
     uint32 resolution = 6 [(options.title) = "Resolution",
@@ -42,6 +44,15 @@ message ImageAcquisition {
                            (options.allowed_values) = { val_uint32: 1024 },
                            (options.default_value) = { val_uint32: 256 },
                            (options.comment) = "Resolution of the image processor"];
+
+    custom_types.CameraType source = 7 [(options.default_value) = { val_custom: { camera_type: SOURCE_NIKON } },
+                                        (options.comment) = "Image source"];
+
+    custom_types.StatusLevel status = 8 [
+        (options.runtime) = true,
+        (options.default_value) = { val_custom: { status_level: STATUS_DISABLED }},
+        (options.comment) = "Image Generator status"
+    ];
 }
 
 message Device {
@@ -51,6 +62,12 @@ message Device {
     string serial_number = 2 [(options.title) = "Serial Number",
                               (options.default_value) = { val_str: "012345" },
                               (options.comment) = "Serial Number of the device"];
+
+    custom_types.StatusLevel status = 3 [
+        (options.runtime) = true,
+        (options.default_value) = { val_custom: { status_level: STATUS_DISABLED }},
+        (options.comment) = "Image Generator status"
+    ];
 }
 
 message Configuration {
