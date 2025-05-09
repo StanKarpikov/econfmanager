@@ -65,6 +65,7 @@ impl InterfaceInstance {
         default_data_folder: &String,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let config = Config::new(database_path, saved_database_path, default_data_folder)?;
+        Self::create_dirs_for_file(&database_path);
         let database = Arc::new(Mutex::new(DatabaseManager::new(&config)?));
         let runtime_data = Arc::new(Mutex::new(SharedRuntimeData::new()?));
         let notifier = Notifier::new()?;

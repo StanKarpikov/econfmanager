@@ -205,6 +205,13 @@ impl DatabaseManager {
         Ok(())
     }
 
+    fn create_dirs_for_file(file_path: &str) -> std::io::Result<()> {
+        if let Some(parent) = Path::new(file_path).parent() {
+            fs::create_dir_all(parent)?;
+        }
+        Ok(())
+    }
+
     /******************************************************************************
      * PUBLIC FUNCTIONS
      ******************************************************************************/
@@ -218,6 +225,7 @@ impl DatabaseManager {
             db.conn().execute("VACUUM", [])
         };
     
+        Self::create_dirs_for_file(&self.database_path);
         let _ = DbConnection::new(&self.database_path, true, true)?;
 
         result?;
@@ -230,6 +238,7 @@ impl DatabaseManager {
             error!("Could not drop the database: {}", error);
         }
         info!("Copying database");
+        Self::create_dirs_for_file(&self.database_path);
         Self::copy_database(
             Path::new(&self.saved_database_path),
             Path::new(&self.database_path),
@@ -241,6 +250,7 @@ impl DatabaseManager {
         filter: &dyn Fn(&String) -> bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Saving database");
+        Self::create_dirs_for_file(&self.saved_database_path);
         Self::copy_database_with_filter(
             Path::new(&self.database_path),
             Path::new(&self.saved_database_path),
@@ -459,7 +469,7 @@ impl DatabaseManager {
         }) {
             Ok(val) => Ok(val),
             Err(e) => {
-                error!("Error reading parameter {}: {}", key, e);
+                info!("Error reading parameter {}: {}", key, e);
                 self.get_default_value(parameter_def)
             }
         };
