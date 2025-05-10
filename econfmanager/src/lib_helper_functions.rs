@@ -187,7 +187,7 @@ pub fn copy_string_to_c_buffer(
     let bytes = c_str.as_bytes_with_nul();
 
     if bytes.len() > max_len {
-        Ok(bytes.len())
+        return Ok(bytes.len());
     }
 
     unsafe { ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, out_c_string, bytes.len()) };
@@ -219,7 +219,7 @@ pub(crate) fn get_string(
     interface_execute(interface, |interface| match interface.get(id, false) {
         Ok(parameter) => match parameter {
             ParameterValue::ValString(val_str) => {
-                let out_len = copy_string_to_c_buffer(&val_str, out_c_string, max_len, id)?;
+                let bytes_copied = copy_string_to_c_buffer(&val_str, out_c_string, max_len, id)?;
                 if !out_len.is_null(){
                     unsafe { *out_len = bytes_copied };
                 }
@@ -267,7 +267,7 @@ pub fn copy_blob_to_c_buffer(
 
     if blob.len() > max_len {
         /* Return the length if the buffer doesn't fit */
-        Ok(blob.len())
+        return Ok(blob.len());
     }
 
     unsafe { ptr::copy_nonoverlapping(blob.as_ptr(), out_buffer, blob.len()) };

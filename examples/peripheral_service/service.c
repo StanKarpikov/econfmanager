@@ -39,6 +39,8 @@ void update_callback(ParameterId id, void* arg)
 }
 
 int main(int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
     EconfStatus status;
     
     CInterfaceInstance* interface = {0};

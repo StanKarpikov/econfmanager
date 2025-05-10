@@ -269,9 +269,10 @@ fn write_string_setter_and_getter(f: &mut File, pm_name: String, short_name: Str
         pub extern "C" fn get_{pm_name}(
             interface: *const CInterfaceInstance,
             {short_name}: *mut c_char,
-            max_len: usize
+            max_len: usize,
+            out_len: *mut usize
         ) -> EconfStatus {{
-            get_string(interface, ParameterId::{pm_id_name}, {short_name}, max_len)
+            get_string(interface, ParameterId::{pm_id_name}, {short_name}, max_len, out_len)
         }}
     "#)?;
             
