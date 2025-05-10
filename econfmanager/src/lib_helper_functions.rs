@@ -170,7 +170,7 @@ pub fn copy_string_to_c_buffer(
     out_c_string: *mut c_char,
     max_len: usize,
     id: ParameterId,
-) -> Result<(), String> {
+) -> Result<usize, String> {
     if out_c_string.is_null() {
         let err = format!("Null pointer provided for {}", id as usize);
         return Err(err);
@@ -187,18 +187,12 @@ pub fn copy_string_to_c_buffer(
     let bytes = c_str.as_bytes_with_nul();
 
     if bytes.len() > max_len {
-        let err = format!(
-            "String too long (needs {} bytes, buffer has {} for {})",
-            bytes.len(),
-            max_len,
-            id as usize
-        );
-        return Err(err);
+        Ok(bytes.len())
     }
 
     unsafe { ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, out_c_string, bytes.len()) };
 
-    Ok(())
+    Ok(bytes.len())
 }
 
 fn c_char_to_string(c_string: *const c_char, id: ParameterId) -> Result<String, String> {
@@ -219,12 +213,16 @@ pub(crate) fn get_string(
     id: ParameterId,
     out_c_string: *mut c_char,
     max_len: usize,
+    out_len: *mut usize,
 ) -> EconfStatus {
     debug!("Get ID {}: string", id as usize);
     interface_execute(interface, |interface| match interface.get(id, false) {
         Ok(parameter) => match parameter {
             ParameterValue::ValString(val_str) => {
-                copy_string_to_c_buffer(&val_str, out_c_string, max_len, id)?;
+                let out_len = copy_string_to_c_buffer(&val_str, out_c_string, max_len, id)?;
+                if !out_len.is_null(){
+                    unsafe { *out_len = bytes_copied };
+                }
                 Ok(())
             }
             _ => {
@@ -263,18 +261,13 @@ pub fn copy_blob_to_c_buffer(
     max_len: usize,
     id: ParameterId,
 ) -> Result<usize, String> {
-    // Returns bytes copied
     if out_buffer.is_null() {
         return Err(format!("Null pointer provided for blob ID {}", id as usize));
     }
 
     if blob.len() > max_len {
-        return Err(format!(
-            "Blob too large (needs {} bytes, buffer has {} for ID {}",
-            blob.len(),
-            max_len,
-            id as usize
-        ));
+        /* Return the length if the buffer doesn't fit */
+        Ok(blob.len())
     }
 
     unsafe { ptr::copy_nonoverlapping(blob.as_ptr(), out_buffer, blob.len()) };
@@ -301,7 +294,9 @@ pub(crate) fn get_blob(
         Ok(parameter) => match parameter {
             ParameterValue::ValBlob(blob) => {
                 let bytes_copied = copy_blob_to_c_buffer(&blob, out_buffer, max_len, id)?;
-                unsafe { *out_len = bytes_copied };
+                if !out_len.is_null(){
+                    unsafe { *out_len = bytes_copied };
+                }
                 Ok(())
             }
             _ => Err(format!("Wrong type requested for ID {}: blob", id as usize).into()),
