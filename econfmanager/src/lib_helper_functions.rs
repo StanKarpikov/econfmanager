@@ -96,14 +96,28 @@ pub(crate) fn get_parameter<T: ParameterType>(
     debug!("Get ID {}:{}", id as usize, type_name::<T>());
     interface_execute(interface, |interface| match interface.get(id, false) {
         Ok(parameter) => {
-            if let Some(ret_val) = T::from_parameter_value(parameter) {
+            if let Some(ret_val) = T::from_parameter_value(parameter.clone()) {
                 if out_parameter.is_null() {
                     error!("Null pointer provided for {}", id as usize);
                     return Err(format!("Null pointer provided for {}", id as usize).into());
                 }
                 unsafe { *out_parameter = ret_val };
                 Ok(())
-            } else {
+            } else if let ParameterValue::ValEnum(val) = parameter {
+                if let Some(ret_val) = T::from_parameter_value(ParameterValue::ValI32(val))
+                {
+                    if out_parameter.is_null() {
+                        error!("Null pointer provided for {}", id as usize);
+                        return Err(format!("Null pointer provided for {}", id as usize).into());
+                    }
+                    unsafe { *out_parameter = ret_val };
+                    Ok(())
+                }
+                else {
+                    error!("Error converting ID for Enum {}:{}", id as usize, type_name::<T>());
+                    Err(format!("Error converting ID for Enum {}:{}", id as usize, type_name::<T>()).into())
+                }
+            }else {
                 error!("Error converting ID {}:{}", id as usize, type_name::<T>());
                 Err(format!("Error converting ID {}:{}", id as usize, type_name::<T>()).into())
             }
@@ -136,11 +150,23 @@ pub(crate) fn set_parameter<T: ParameterType>(
     interface_execute(interface, |interface| {
         match interface.set(id, parameter.to_parameter_value()) {
             Ok(parameter) => {
-                if let Some(ret_val) = T::from_parameter_value(parameter) {
+                if let Some(ret_val) = T::from_parameter_value(parameter.clone()) {
                     if !out_parameter.is_null() {
                         unsafe { *out_parameter = ret_val };
                     }
                     Ok(())
+                } else if let ParameterValue::ValEnum(val) = parameter {
+                    if let Some(ret_val) = T::from_parameter_value(ParameterValue::ValI32(val))
+                    {
+                        if !out_parameter.is_null() {
+                            unsafe { *out_parameter = ret_val };
+                        }
+                        Ok(())
+                    }
+                    else {
+                        error!("Error converting ID for Enum {}:{}", id as usize, type_name::<T>());
+                        Err(format!("Error converting ID for Enum {}:{}", id as usize, type_name::<T>()).into())
+                    }
                 } else {
                     error!("Error converting ID {}:{}", id as usize, type_name::<T>());
                     Err(format!("Error converting ID {}:{}", id as usize, type_name::<T>()).into())
