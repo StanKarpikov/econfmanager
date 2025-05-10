@@ -57,9 +57,19 @@ pub(crate) fn get_parameter_quick<T: ParameterType>(
     let mut out_parameter = None;
     interface_execute(interface, |interface| match interface.get(id, false) {
         Ok(parameter) => {
-            if let Some(ret_val) = T::from_parameter_value(parameter) {
+            if let Some(ret_val) = T::from_parameter_value(parameter.clone()) {
                 out_parameter = Some(ret_val);
                 Ok(())
+            } else if let ParameterValue::ValEnum(val) = parameter {
+                if let Some(ret_val) = T::from_parameter_value(ParameterValue::ValI32(val))
+                {
+                    out_parameter = Some(ret_val);
+                    Ok(())
+                }
+                else {
+                    error!("Error converting ID for Enum {}:{}", id as usize, type_name::<T>());
+                    Err(format!("Error converting ID for Enum {}:{}", id as usize, type_name::<T>()).into())
+                }
             } else {
                 error!("Error converting ID {}:{}", id as usize, type_name::<T>());
                 Err(format!("Error converting ID {}:{}", id as usize, type_name::<T>()).into())
@@ -118,8 +128,8 @@ pub(crate) fn get_parameter<T: ParameterType>(
                     Err(format!("Error converting ID for Enum {}:{}", id as usize, type_name::<T>()).into())
                 }
             }else {
-                error!("Error converting ID {}:{}", id as usize, type_name::<T>());
-                Err(format!("Error converting ID {}:{}", id as usize, type_name::<T>()).into())
+                error!("Error converting ID {}:{} paraemeter {}", id as usize, type_name::<T>(), &parameter);
+                Err(format!("Error converting ID {}:{} paraemeter {}", id as usize, type_name::<T>(), &parameter).into())
             }
         }
         Err(e) => {
