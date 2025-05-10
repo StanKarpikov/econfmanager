@@ -207,11 +207,6 @@ pub fn copy_string_to_c_buffer(
     max_len: usize,
     id: ParameterId,
 ) -> Result<usize, String> {
-    if out_c_string.is_null() {
-        let err = format!("Null pointer provided for {}", id as usize);
-        return Err(err);
-    }
-
     let c_str = match CString::new(s) {
         Ok(c) => c,
         Err(e) => {
@@ -221,6 +216,10 @@ pub fn copy_string_to_c_buffer(
     };
 
     let bytes = c_str.as_bytes_with_nul();
+    
+    if out_c_string.is_null() {
+        return Ok(bytes.len());
+    }
 
     if bytes.len() > max_len {
         return Ok(bytes.len());
@@ -298,7 +297,8 @@ pub fn copy_blob_to_c_buffer(
     id: ParameterId,
 ) -> Result<usize, String> {
     if out_buffer.is_null() {
-        return Err(format!("Null pointer provided for blob ID {}", id as usize));
+        /* Return the length if the buffer was NULL */
+        return Ok(blob.len());
     }
 
     if blob.len() > max_len {
