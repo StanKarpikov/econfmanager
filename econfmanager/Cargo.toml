@@ -35,4 +35,4 @@ rustfmt = "0.10.0"
 
 [lib]
 name = "econfmanager"
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib", "staticlib", "dylib"]

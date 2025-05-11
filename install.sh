@@ -4,6 +4,7 @@ set -e
 TARGET_DIR="target/release"
 HEADER_FILE="$TARGET_DIR/econfmanager.h"
 STATIC_LIB="$TARGET_DIR/libeconfmanager.a"
+DYN_LIB="$TARGET_DIR/libeconfmanager.so"
 JSONRPC_SERVER="$TARGET_DIR/jsonrpc_server"
 
 if [ -z "$1" ]; then
@@ -21,6 +22,7 @@ mkdir -p "$OUTPUT_DIR"
 
 echo "Copying static library and header to $OUTPUT_DIR/"
 cp "$STATIC_LIB" "$OUTPUT_DIR/"
+cp "$DYN_LIB" "$OUTPUT_DIR/"
 cp "$HEADER_FILE" "$OUTPUT_DIR/"
 cp "econfmanager/cmake/CMakeLists.txt" "$OUTPUT_DIR/"
 
