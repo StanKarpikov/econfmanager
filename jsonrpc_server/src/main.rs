@@ -74,7 +74,7 @@ type SharedState = Arc<Mutex<AppState>>;
 
 #[tokio::main]
 async fn main() {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+    env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
     .format(|buf, record| {
         let file_name = record.file().unwrap_or("unknown");
         let file_name = std::path::Path::new(file_name)
@@ -144,7 +144,12 @@ async fn main() {
 
     let api_routes = ws.or(read_param).or(write_param).or(info);
     if SERVE_STATIC_FILES {
-        let static_files = warp::fs::dir("../examples/web_client");        
+        let static_files_path = std::env::var("STATIC_FILES_PATH")
+            .expect("STATIC_FILES_PATH environment variable not set when SERVE_STATIC_FILES is true");
+        if !std::path::Path::new(&static_files_path).exists() {
+            panic!("Static files directory not found at: {}", static_files_path);
+        }
+        let static_files = warp::fs::dir(static_files_path);
         let api_routes = api_routes.or(static_files);
         warp::serve(api_routes).run(socket_addr).await;
     }

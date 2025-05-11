@@ -547,7 +547,7 @@ impl DatabaseManager {
             let id = PARAMETER_DATA
                 .iter()
                 .position(|pm| pm.name_id == key)
-                .expect("Parameter not found");
+                .ok_or_else(|| format!("Updated parameter {} not found", key))?;
 
             let pm_id = match ParameterId::try_from(id) {
                 Ok(param) => param,
