@@ -225,7 +225,7 @@ impl DatabaseManager {
             db.conn().execute("VACUUM", [])
         };
     
-        Self::create_dirs_for_file(&self.database_path);
+        Self::create_dirs_for_file(&self.database_path)?;
         let _ = DbConnection::new(&self.database_path, true, true)?;
 
         result?;
@@ -238,7 +238,7 @@ impl DatabaseManager {
             error!("Could not drop the database: {}", error);
         }
         info!("Copying database");
-        Self::create_dirs_for_file(&self.database_path);
+        Self::create_dirs_for_file(&self.database_path)?;
         Self::copy_database(
             Path::new(&self.saved_database_path),
             Path::new(&self.database_path),
@@ -250,7 +250,7 @@ impl DatabaseManager {
         filter: &dyn Fn(&String) -> bool,
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Saving database");
-        Self::create_dirs_for_file(&self.saved_database_path);
+        Self::create_dirs_for_file(&self.saved_database_path)?;
         Self::copy_database_with_filter(
             Path::new(&self.database_path),
             Path::new(&self.saved_database_path),
@@ -266,7 +266,7 @@ impl DatabaseManager {
             last_update_timestamp: 0.0,
             default_data_folder: config.default_data_folder.clone(),
         };
-        Self::create_dirs_for_file(&database_manager.database_path);
+        Self::create_dirs_for_file(&database_manager.database_path)?;
 
         match fs::metadata(&database_manager.database_path) {
             Ok(metadata) if metadata.is_file() => {

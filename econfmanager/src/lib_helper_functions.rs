@@ -293,8 +293,7 @@ pub(crate) fn set_string(
 pub fn copy_blob_to_c_buffer(
     blob: &[u8],
     out_buffer: *mut u8,
-    max_len: usize,
-    id: ParameterId,
+    max_len: usize
 ) -> Result<usize, String> {
     if out_buffer.is_null() {
         /* Return the length if the buffer was NULL */
@@ -329,7 +328,7 @@ pub(crate) fn get_blob(
     interface_execute(interface, |interface| match interface.get(id, false) {
         Ok(parameter) => match parameter {
             ParameterValue::ValBlob(blob) => {
-                let bytes_copied = copy_blob_to_c_buffer(&blob, out_buffer, max_len, id)?;
+                let bytes_copied = copy_blob_to_c_buffer(&blob, out_buffer, max_len)?;
                 if !out_len.is_null(){
                     unsafe { *out_len = bytes_copied };
                 }
