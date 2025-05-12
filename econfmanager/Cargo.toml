@@ -4,6 +4,7 @@ description = "Configuration Manager for Embedded Systems"
 version = "0.1.6"
 edition = "2024"
 authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
+license = "MIT"
 
 [dependencies]
 log = "0.4.27"

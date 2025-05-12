@@ -3,6 +3,7 @@ name = "jsonrpc_server"
 version = "0.1.0"
 edition = "2024"
 authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
+license = "MIT"
 
 [dependencies]
 log = "0.4.27"
