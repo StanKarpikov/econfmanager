@@ -544,10 +544,15 @@ impl DatabaseManager {
         while let Some(row) = rows.next()? {
             let key = row.get::<usize, String>(0)?;
 
-            let id = PARAMETER_DATA
+            // TODO: Ignore unknown parameters for now, later a proper database migration should be implemented
+            let id_find = PARAMETER_DATA
                 .iter()
-                .position(|pm| pm.name_id == key)
-                .ok_or_else(|| format!("Updated parameter {} not found", key))?;
+                .position(|pm| pm.name_id == key);
+            
+            let id = match id_find {
+                Some(id) => id,
+                None => continue,
+            };
 
             let pm_id = match ParameterId::try_from(id) {
                 Ok(param) => param,

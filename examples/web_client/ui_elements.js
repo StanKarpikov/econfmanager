@@ -99,17 +99,47 @@ function createParameterInput(param) {
         case 'i32':
         case 'u32':
         case 'f32':
-            input = document.createElement('input');
-            input.type = 'number';
-            input.id = parameter_id;
-            if (param.parameter_type.toLowerCase() === 'f32') {
-                input.step = 'any';
+            if (param.validation?.allowed_values) {
+                input = document.createElement('select');
+                input.id = parameter_id;
+                
+                param.validation.allowed_values.forEach(option => {
+                    const opt = document.createElement('option');
+                    opt.value = option.value;
+                    opt.textContent = option.name;
+                    input.appendChild(opt);
+                });
+            } else {
+                input = document.createElement('input');
+                input.type = 'number';
+                input.id = parameter_id;
+                
+                if (param.validation?.range) {
+                    input.min = param.validation.range.min;
+                    input.max = param.validation.range.max;
+                }
+                
+                if (param.parameter_type.toLowerCase() === 'f32') {
+                    input.step = 'any';
+                }
             }
             break;
         case 'string':
-            input = document.createElement('input');
-            input.type = 'text';
-            input.id = parameter_id;
+            if (param.validation?.allowed_values) {
+                input = document.createElement('select');
+                input.id = parameter_id;
+                
+                param.validation.allowed_values.forEach(option => {
+                    const opt = document.createElement('option');
+                    opt.value = option.value;
+                    opt.textContent = option.name;
+                    input.appendChild(opt);
+                });
+            } else {
+                input = document.createElement('input');
+                input.type = 'text';
+                input.id = parameter_id;
+            }
             break;
         case 'blob':
             input = document.createElement('div');

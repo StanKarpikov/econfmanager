@@ -183,6 +183,35 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].runtime
     }
 
+    pub fn get_validation_json(&self, id: ParameterId) -> serde_json::Value {
+        match &PARAMETER_DATA[id as usize].validation {
+            crate::schema::ValidationMethod::None => serde_json::json!("none"),
+            crate::schema::ValidationMethod::Range { min, max } => {
+                serde_json::json!({
+                    "range": {
+                        "min": Self::value_to_string(&min),
+                        "max": Self::value_to_string(&max)
+                    }
+                })
+            },
+            crate::schema::ValidationMethod::AllowedValues { values, names } => {
+                let values_iter = values.iter();
+                let names_iter = names.iter();
+                let value_pairs: Vec<_> = values_iter
+                    .zip(names_iter)
+                    .map(|(value, name)| {
+                        serde_json::json!({
+                            "value": Self::value_to_string(value),
+                            "name": name
+                        })
+                    })
+                    .collect();
+                serde_json::json!({ "allowed_values": value_pairs })
+            },
+            crate::schema::ValidationMethod::CustomCallback => serde_json::json!("custom"),
+        }
+    }
+    
     pub fn get_type_string(&self, id: ParameterId) -> String {
         match &PARAMETER_DATA[id as usize].value_type {
             ParameterValueType::TypeBool => "Bool".to_owned(),

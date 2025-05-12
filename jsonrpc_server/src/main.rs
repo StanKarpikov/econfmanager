@@ -428,6 +428,7 @@ struct ParameterInfo {
     is_const: bool,
     runtime: bool,
     group: String,
+    validation: serde_json::Value,
     parameter_type: String,
 }
 
@@ -460,6 +461,7 @@ async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejec
                 parameter_type: app.interface.get_type_string(id),
                 is_const: app.interface.get_is_const(id),
                 runtime: app.interface.get_runtime(id),
+                validation: app.interface.get_validation_json(id),
                 group: app.interface.get_group(id),
             }
         })
