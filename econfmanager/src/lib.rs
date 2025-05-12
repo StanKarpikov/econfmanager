@@ -100,7 +100,7 @@ pub extern "C" fn econf_init(
         default_data_folder: *const std::os::raw::c_char,
         interface: *mut *mut CInterfaceInstance
     ) -> EconfStatus {
-    env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
+    let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
         .format(|buf, record| {
             let file_name = record.file().unwrap_or("unknown");
             let file_name = std::path::Path::new(file_name)
@@ -118,7 +118,7 @@ pub extern "C" fn econf_init(
                 record.args()
             )
         })
-        .init();
+        .try_init();
 
     let database_path = unsafe { std::ffi::CStr::from_ptr(database_path).to_string_lossy().into_owned() };
     let saved_database_path = unsafe { std::ffi::CStr::from_ptr(saved_database_path).to_string_lossy().into_owned() };

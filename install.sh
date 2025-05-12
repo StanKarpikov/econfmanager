@@ -20,7 +20,7 @@ fi
 OUTPUT_DIR="$1"
 mkdir -p "$OUTPUT_DIR"
 
-echo "Copying static library and header to $OUTPUT_DIR/"
+echo "Copying static library and header Econfmanager to $OUTPUT_DIR/"
 cp "$STATIC_LIB" "$OUTPUT_DIR/"
 cp "$DYN_LIB" "$OUTPUT_DIR/"
 cp "$HEADER_FILE" "$OUTPUT_DIR/"
@@ -28,4 +28,4 @@ cp "econfmanager/cmake/CMakeLists.txt" "$OUTPUT_DIR/"
 
 cp "$JSONRPC_SERVER" "$OUTPUT_DIR/"
 
-echo "Installed to $OUTPUT_DIR/"
+echo "Econfmanager Installed to $OUTPUT_DIR/"
