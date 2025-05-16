@@ -562,11 +562,17 @@ impl DatabaseManager {
             ValidationMethod::AllowedValues { values, names: _ } => {
                 match values
                     .iter()
-                    .filter_map(|val| val.distance(&input).map(|dist| (val, dist)))
+                    .map(|val| (val, val.distance(&input)))
                     .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
                 {
-                    Some((_closest, _dist)) => {
-                        Ok(Status::StatusOkNotChanged(input))
+                    Some((closest, _)) => {
+                        if *closest == input {
+                            Ok(Status::StatusOkNotChanged(input))
+                        }
+                        else
+                        {
+                            Ok(Status::StatusOkOverflowFixed(closest.clone()))
+                        }
                     }
                     None => Ok(Status::StatusErrorNotAccepted(input)),
                 }
