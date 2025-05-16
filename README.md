@@ -59,8 +59,6 @@ Current limitations (TODO):
 
 - Repeated fields not supported
 
-- Message-type parameters not fully implemented (will be through the `custom_types.proto`)
-
 bytes messages (Blob, binary) can have default values that are set as `val_path` pointing to the file.
 
 ### 2. Build the Library
@@ -145,11 +143,18 @@ A plain JavaScript JSON-RPC client demonstrating:
 
 - Get/set interface
 
+Run the `jsonrpc_server` from the project directory:
+
+```bash
+export STATIC_FILES_PATH=examples/web_client
+cargo run -- --config jsonrpc_server/config.json
+
+# Open localhost:3031 in a browser
+```
+
 ![alt text](docs/ui_example.png)
 UI Example
 
 ## TODO
 
-- Implement constant parameters
-- Hide the private paramerers from the JSON RPC user UI
 - Implement realtime updates for multiple databases with different names

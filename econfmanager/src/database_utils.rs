@@ -1,4 +1,6 @@
 use rusqlite::{Connection, OpenFlags, ToSql, backup::Backup, params};
+use strsim::levenshtein;
+use std::cmp::Ordering;
 use std::time::Duration;
 use std::{
     error::Error,
@@ -10,7 +12,7 @@ use std::{
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 
-use crate::schema::ParameterValueType;
+use crate::schema::{ParameterValueType, ValidationMethod};
 use crate::{
     config::Config,
     generated::{PARAMETER_DATA, ParameterId},
@@ -18,6 +20,53 @@ use crate::{
 };
 
 const TABLE_NAME: &str = "parameters";
+
+impl ParameterValue {
+    pub(crate) fn distance(&self, other: &ParameterValue) -> Option<f64> {
+        match (self, other) {
+            (ParameterValue::ValBool(a), ParameterValue::ValBool(b)) => Some((*a as u8 ^ *b as u8) as f64),
+            (ParameterValue::ValU64(a), ParameterValue::ValU64(b)) => Some((*a as f64 - *b as f64).abs()),
+            (ParameterValue::ValU32(a), ParameterValue::ValU32(b)) => Some((*a as f64 - *b as f64).abs()),
+            (ParameterValue::ValI64(a), ParameterValue::ValI64(b)) => Some((*a - *b).abs() as f64),
+            (ParameterValue::ValI32(a), ParameterValue::ValI32(b)) => Some((*a - *b).abs() as f64),
+            (ParameterValue::ValF32(a), ParameterValue::ValF32(b)) => Some((a - b).abs().into()),
+            (ParameterValue::ValEnum(a), ParameterValue::ValEnum(b)) => Some((*a - *b).abs() as f64),
+            (ParameterValue::ValString(a), ParameterValue::ValString(b)) => {
+                let dist = levenshtein(a, b);
+                Some(dist as f64)
+            },
+            (ParameterValue::ValBlob(a), ParameterValue::ValBlob(b)) => {
+                if a == b {
+                    Some(0.0)
+                } else {
+                    None
+                }
+            },
+            _ => None, // Distance not defined for mismatched or unsupported variants
+        }
+    }
+}
+
+impl PartialOrd for ParameterValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        use ParameterValue::*;
+        match (self, other) {
+            (ValBool(a), ValBool(b)) => a.partial_cmp(b),
+            (ValI32(a), ValI32(b)) => a.partial_cmp(b),
+            (ValU32(a), ValU32(b)) => a.partial_cmp(b),
+            (ValI64(a), ValI64(b)) => a.partial_cmp(b),
+            (ValU64(a), ValU64(b)) => a.partial_cmp(b),
+            (ValF32(a), ValF32(b)) => a.partial_cmp(b),
+            (ValF64(a), ValF64(b)) => a.partial_cmp(b),
+            (ValString(a), ValString(b)) => a.partial_cmp(b),
+            (ValBlob(a), ValBlob(b)) => a.partial_cmp(b),
+            (ValEnum(a), ValEnum(b)) => a.partial_cmp(b),
+            (ValPath(a), ValPath(b)) => a.partial_cmp(b),
+            (ValNone, ValNone) => Some(Ordering::Equal),
+            _ => None, // Different types are not comparable
+        }
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct DatabaseManager {
@@ -120,6 +169,19 @@ pub enum Status<T> {
     StatusOkOverflowFixed(T),
     StatusErrorNotAccepted(T),
     StatusErrorFailed,
+}
+
+impl<T> Status<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            Status::StatusOkChanged(val)
+            | Status::StatusOkNotChanged(val)
+            | Status::StatusOkNotChecked(val)
+            | Status::StatusOkOverflowFixed(val)
+            | Status::StatusErrorNotAccepted(val) => val,
+            Status::StatusErrorFailed => panic!("called `Status::unwrap()` on a `StatusErrorFailed`"),
+        }
+    }
 }
 
 impl<T: fmt::Display> fmt::Display for Status<T> {
@@ -477,58 +539,117 @@ impl DatabaseManager {
         Ok(result?)
     }
 
+    pub fn validate(
+        &self,
+        id: ParameterId,
+        value: Status<ParameterValue>,
+    ) -> Result<Status<ParameterValue>, Box<dyn Error>> {
+        let input = value.unwrap(); // consume `value` once, no clone
+    
+        match &PARAMETER_DATA[id as usize].validation {
+            ValidationMethod::None => Ok(Status::StatusOkNotChanged(input)),
+    
+            ValidationMethod::Range { min, max } => {
+                if input < *min {
+                    Ok(Status::StatusOkOverflowFixed(min.clone()))
+                } else if input > *max {
+                    Ok(Status::StatusOkOverflowFixed(max.clone()))
+                } else {
+                    Ok(Status::StatusOkNotChanged(input))
+                }
+            }
+    
+            ValidationMethod::AllowedValues { values, names: _ } => {
+                match values
+                    .iter()
+                    .filter_map(|val| val.distance(&input).map(|dist| (val, dist)))
+                    .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                {
+                    Some((_closest, _dist)) => {
+                        Ok(Status::StatusOkNotChanged(input))
+                    }
+                    None => Ok(Status::StatusErrorNotAccepted(input)),
+                }
+            }
+    
+            ValidationMethod::CustomCallback => todo!(),
+        }
+    }
+
     pub fn write(
         &self,
         id: ParameterId,
         value: ParameterValue,
         force: bool,
     ) -> Result<Status<ParameterValue>, Box<dyn Error>> {
-        // validate(id, &value)?;
-
-        // Check if values are equal (unless forced)
+    
+        // Skip writing if current value equals new value (unless forced)
         if !force {
             match self.read_or_create(id) {
-                Ok(current) => {
-                    if current == value {
-                        debug!("Values are equal, skip writing");
-                        return Ok(Status::StatusOkNotChanged(value));
-                    }
+                Ok(current) if current == value => {
+                    debug!("Values are equal, skip writing");
+                    return Ok(Status::StatusOkNotChanged(value));
                 }
+                Ok(_) => {} // proceed to write
                 Err(e) => error!("Error reading current value: {}", e),
-            };
+            }
         }
-        debug!("Write to DB: {}", value);
-
+    
+        // Validate the incoming value
+        let validated_status = match self.validate(id, Status::StatusOkNotChanged(value)) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Error validating parameter {}: {}", id as usize, e);
+                return Ok(Status::StatusErrorFailed);
+            }
+        };
+    
+        debug!("Write to DB: {:?}", validated_status);
+    
+        let inner_value = match validated_status {
+            Status::StatusOkChanged(ref v)
+            | Status::StatusOkNotChanged(ref v)
+            | Status::StatusOkNotChecked(ref v)
+            | Status::StatusOkOverflowFixed(ref v)
+            | Status::StatusErrorNotAccepted(ref v) => v,
+            Status::StatusErrorFailed => {
+                return Ok(Status::StatusErrorFailed);
+            }
+        };
+    
         let db = DbConnection::new(&self.database_path, true, false)?;
-
+    
         let sql = format!(
             "INSERT OR REPLACE INTO {} (key, value, timestamp) VALUES (?,?,?);",
             TABLE_NAME
         );
-
         let mut stmt = db.conn.as_ref().unwrap().prepare(&sql)?;
-
+    
         let parameter_def = &PARAMETER_DATA[id as usize];
         stmt.execute(params![
             parameter_def.name_id,
-            match &value {
-                ParameterValue::ValBool(v)=>v.to_sql()?,
-                ParameterValue::ValI32(v)=>v.to_sql()?,
-                ParameterValue::ValU32(v)=>v.to_sql()?,
-                ParameterValue::ValI64(v)=>v.to_sql()?,
-                ParameterValue::ValU64(v)=>v.to_sql()?,
-                ParameterValue::ValF32(v)=>v.to_sql()?,
-                ParameterValue::ValF64(v)=>v.to_sql()?,
-                ParameterValue::ValString(v)=> v.to_sql()?,
-                ParameterValue::ValBlob(v)=> v.to_sql()?,
-                ParameterValue::ValPath(_)=> todo!(),
-                ParameterValue::ValNone => todo!(),
-                ParameterValue::ValEnum(v) => v.to_sql()?, 
-                            },
+            match inner_value {
+                ParameterValue::ValBool(v) => v.to_sql()?,
+                ParameterValue::ValI32(v) => v.to_sql()?,
+                ParameterValue::ValU32(v) => v.to_sql()?,
+                ParameterValue::ValI64(v) => v.to_sql()?,
+                ParameterValue::ValU64(v) => v.to_sql()?,
+                ParameterValue::ValF32(v) => v.to_sql()?,
+                ParameterValue::ValF64(v) => v.to_sql()?,
+                ParameterValue::ValString(v) => v.to_sql()?,
+                ParameterValue::ValBlob(v) => v.to_sql()?,
+                ParameterValue::ValEnum(v) => v.to_sql()?,
+                ParameterValue::ValPath(_) => {
+                    todo!("ValPath handling not implemented")
+                }
+                ParameterValue::ValNone => {
+                    todo!("ValNone handling not implemented")
+                }
+            },
             Self::get_timestamp(),
         ])?;
-
-        Ok(Status::StatusOkChanged(value))
+    
+        Ok(validated_status)
     }
 
     pub fn update(&mut self) -> Result<Vec<ParameterId>, Box<dyn Error>> {

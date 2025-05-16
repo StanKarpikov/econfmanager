@@ -181,8 +181,10 @@ pub(crate) fn generate_parameter_enum(
         writeln!(f, "            comment: {:?},", p.comment)?;
         writeln!(f, "            title: {:?},", p.title)?;
         writeln!(f, "            is_const: {},", p.is_const)?;
-        writeln!(f, "            tags: vec![{}],", tags_code)?;
+        writeln!(f, "            tags: Cow::Borrowed(&[{}]),", tags_code)?;
         writeln!(f, "            runtime: {},", p.runtime)?;
+        writeln!(f, "            readonly: {},", p.readonly)?;
+        writeln!(f, "            internal: {},", p.internal)?;
         writeln!(f, "        }},")?;
     }
     writeln!(f, "];\n\n")?;

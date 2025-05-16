@@ -78,19 +78,23 @@ function updateParam(name, value) {
     }
 }
 
-function createParameterInput(param) {
+function createParameterInput(param, tag) {
+    // if (tag && (!param.tags || !param.tags.includes(tag))) {
+    //     return null;
+    // }
+
     const paramGroup = document.createElement('div');
     paramGroup.className = 'param-group';
-    
+
     let group_id = param.name.split('@')[0];
     let parameter_id = param.name.split('@')[1];
 
     const label = document.createElement('label');
     label.htmlFor = parameter_id;
     label.textContent = param.title + ':';
-    
+
     let input;
-    switch(param.parameter_type.toLowerCase()) {
+    switch (param.parameter_type.toLowerCase()) {
         case 'bool':
             input = document.createElement('input');
             input.type = 'checkbox';
@@ -102,7 +106,7 @@ function createParameterInput(param) {
             if (param.validation?.allowed_values) {
                 input = document.createElement('select');
                 input.id = parameter_id;
-                
+
                 param.validation.allowed_values.forEach(option => {
                     const opt = document.createElement('option');
                     opt.value = option.value;
@@ -113,12 +117,12 @@ function createParameterInput(param) {
                 input = document.createElement('input');
                 input.type = 'number';
                 input.id = parameter_id;
-                
+
                 if (param.validation?.range) {
                     input.min = param.validation.range.min;
                     input.max = param.validation.range.max;
                 }
-                
+
                 if (param.parameter_type.toLowerCase() === 'f32') {
                     input.step = 'any';
                 }
@@ -128,7 +132,7 @@ function createParameterInput(param) {
             if (param.validation?.allowed_values) {
                 input = document.createElement('select');
                 input.id = parameter_id;
-                
+
                 param.validation.allowed_values.forEach(option => {
                     const opt = document.createElement('option');
                     opt.value = option.value;
@@ -145,17 +149,17 @@ function createParameterInput(param) {
             input = document.createElement('div');
             input.className = 'blob-parameter';
             input.id = parameter_id;
-            
+
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
             fileInput.className = 'blob-input';
-            
+
             const blobInfo = document.createElement('div');
             blobInfo.className = 'blob-info';
-            
+
             const imagePreview = document.createElement('div');
             imagePreview.className = 'image-preview';
-            
+
             input.appendChild(fileInput);
             input.appendChild(blobInfo);
             input.appendChild(imagePreview);
@@ -165,14 +169,27 @@ function createParameterInput(param) {
             input.type = 'text';
             input.id = parameter_id;
     }
+
+    // Make input readonly or disabled if readonly or is_const flags are set
+    if (param.readonly || param.is_const) {
+        if (input.tagName === 'INPUT' || input.tagName === 'SELECT') {
+            input.disabled = true;
+        } else if (input.classList.contains('blob-parameter')) {
+            const fileInput = input.querySelector('input[type="file"]');
+            if (fileInput) {
+                fileInput.disabled = true;
+            }
+        }
+    }
+
     param.element = input;
 
     paramGroup.appendChild(label);
     paramGroup.appendChild(input);
-    
+
     if (param.comment) {
         input.title = param.comment;
-        
+
         const comment = document.createElement('div');
         comment.className = 'comment';
         comment.textContent = param.comment;
@@ -184,7 +201,7 @@ function createParameterInput(param) {
     };
 
     input.addEventListener("change", param.changeHandler);
-    
+
     return paramGroup;
 }
 
@@ -201,7 +218,7 @@ function createParameterSection(groupInfo, parameters) {
     
     const groupParams = parameters.filter(p => p.group === groupInfo.name);
     groupParams.forEach(param => {
-        section.appendChild(createParameterInput(param));
+        section.appendChild(createParameterInput(param, ""));
     });
     
     return section;

@@ -32,15 +32,17 @@ message ParameterValue {
 }
 
 extend google.protobuf.FieldOptions {
-    ValidationMethod validation = 50001;
-    ParameterValue min = 50002;
-    ParameterValue max = 50003;
-    repeated ParameterValue allowed_values = 50004;
-    string custom_callback = 50005;
-    string comment = 50006;
-    ParameterValue default_value = 50007;
-    bool is_const = 50008;
-    repeated string tags = 50009;
-    bool runtime = 50010;
-    string title = 50011;
+    ValidationMethod validation = 50001;              /* Validation method, applied when the parameter is set */
+    ParameterValue min = 50002;                       /* With validation:range the minimum value of the parameter */
+    ParameterValue max = 50003;                       /* With validation:range the maximum value of the parameter */
+    repeated ParameterValue allowed_values = 50004;   /* A list of allowed values for the parameters. It is used for enums, but can also limit other types */
+    string custom_callback = 50005;                   /* A callback for parameter validation (TODO, not implemented) */
+    string comment = 50006;                           /* Comment, description */
+    ParameterValue default_value = 50007;             /* Default value of the parameter is assigned if it is not found in the database or cannot be read */
+    bool is_const = 50008;                            /* Const parameters cannot be changed and only use the default value */
+    repeated string tags = 50009;                     /* Custom tags for the parameter */
+    bool runtime = 50010;                             /* Runtime paramteres are not saved to the permanent storage, but they persist between program restarts if the temporary database is not deleted */
+    string title = 50011;                             /* Title of the parameter */
+    bool readonly = 50012;                            /* Readonly parameters cannot be changed in the UI (JSONRPC Server) */
+    bool internal = 50013;                            /* Internal parameters are not shown in the UI (JSONRPC Server) */
 }

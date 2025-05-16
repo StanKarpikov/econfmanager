@@ -248,8 +248,10 @@ pub struct Parameter {
     pub comment: &'static str,
     pub title: &'static str,
     pub is_const: bool,
-    pub tags: Vec<&'static str>,
+    pub tags: Cow<'static, [&'static str]>,
     pub runtime: bool,
+    pub readonly: bool,
+    pub internal: bool,
 }
 
 #[repr(C)]
@@ -395,8 +397,10 @@ impl SchemaManager {
                             comment: "", 
                             title: "",
                             is_const: false,
-                            tags: Vec::new(),
-                            runtime: false, 
+                            tags: Vec::new().into(),
+                            runtime: false,
+                            readonly: false,
+                            internal: false, 
                         };
 
                         let field_options = pm_field.options();
@@ -420,6 +424,29 @@ impl SchemaManager {
                             .find(|(desc, _)| desc.name() == "is_const")
                             .and_then(|(_, val)| val.as_bool())
                             .unwrap_or(false);
+
+                        parameter.readonly = field_options.extensions()
+                            .find(|(desc, _)| desc.name() == "readonly")
+                            .and_then(|(_, val)| val.as_bool())
+                            .unwrap_or(false);
+
+                        parameter.tags = field_options.extensions()
+                            .find(|(desc, _)| desc.name() == "tags")
+                            .and_then(|(_, val)| {
+                                if let Value::List(list) = val {
+                                    let leaked: Vec<&'static str> = list.iter()
+                                        .filter_map(|val| val.as_str())
+                                        .map(|s| Box::leak(s.to_string().into_boxed_str()))
+                                        .collect::<Vec<_>>() // collect once into Vec<&'static str>
+                                        .into_iter()
+                                        .map(|s_mut| &*s_mut)  // convert &mut str to &str explicitly if needed
+                                        .collect();
+                                    Some(leaked)
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_default().into();
 
                         let value_default = field_options.extensions()
                             .find(|(desc, _)| desc.name() == "default_value")
@@ -536,7 +563,10 @@ impl SchemaManager {
                                             }
                                         })
                                         .ok_or(format!("Error: AllowedValues validation requires 'allowed_values' option {}. Options: {}", parameter.name_id, field_options))?;
-                                    
+
+                                    let mut names_str: Box<[&'static str]> = values.iter().map(|v| Box::leak(v.to_string().into_boxed_str()) as &'static str).collect();
+                                    *names = Cow::Owned(names_str.into_vec());
+
                                     for value in values.iter() {
                                         if mem::discriminant(&parameter.value_type) != mem::discriminant(&value.parameter_type())
                                         {

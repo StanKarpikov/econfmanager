@@ -172,6 +172,11 @@ struct RpcResponse {
 }
 
 fn notify_client(app: &mut AppState, id: ParameterId) {
+    if app.interface.is_internal(id)
+    {
+        return;
+    }
+
     let parameter_name = app.interface.get_name(id);
 
     let Ok(value) = app.interface.get(id, false) else {
@@ -223,6 +228,13 @@ fn handle_rpc_logic_ws(
             let parameter_id = app.interface
                 .get_parameter_id_from_name(name.to_string())
                 .ok_or(format!("Could not find parameter ID for {}", name))?;
+
+            if app.interface.is_internal(parameter_id)
+            {
+                let msg = format!("Access internal parameter |{}| forbidden", name);
+                error!("{}", msg);
+                return Err(msg);
+            }
 
             let value = app.interface.get(parameter_id, false)
                 .map_err(|e| format!("Internal error: {}", e))?;
@@ -279,6 +291,20 @@ fn handle_rpc_logic_ws(
                     msg
                 })?;
 
+            if app.interface.is_internal(parameter_id)
+            {
+                let msg = format!("Access internal parameter |{}| forbidden", name);
+                error!("{}", msg);
+                return Err(msg);
+            }
+
+            if app.interface.is_readonly(parameter_id)
+            {
+                let msg = format!("Readonly parameter cannnot be changed |{}|", name);
+                error!("{}", msg);
+                return Err(msg);
+            }
+            
             let value = params.get("value")
                 .ok_or_else(|| {
                     let msg = "Missing value field";
@@ -427,7 +453,9 @@ struct ParameterInfo {
     title: String,
     is_const: bool,
     runtime: bool,
+    readonly: bool,
     group: String,
+    tags: Vec<String>,
     validation: serde_json::Value,
     parameter_type: String,
 }
@@ -451,6 +479,10 @@ async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejec
 
     let parameters: Vec<ParameterInfo> = app.names.iter()
         .enumerate()
+        .filter(|(idx, _)| {
+            let id = ParameterId::try_from(*idx).unwrap();
+            !app.interface.is_internal(id)
+        })
         .map(|(idx, _)| {
             let id = ParameterId::try_from(idx).unwrap();
             ParameterInfo {
@@ -459,10 +491,12 @@ async fn handle_info(state: SharedState) -> Result<impl warp::Reply, warp::Rejec
                 comment: app.interface.get_comment(id),
                 title: app.interface.get_title(id),
                 parameter_type: app.interface.get_type_string(id),
-                is_const: app.interface.get_is_const(id),
-                runtime: app.interface.get_runtime(id),
+                is_const: app.interface.is_const(id),
+                runtime: app.interface.is_runtime(id),
                 validation: app.interface.get_validation_json(id),
                 group: app.interface.get_group(id),
+                readonly: app.interface.is_readonly(id),
+                tags: app.interface.get_tags(id),
             }
         })
         .collect();
@@ -509,6 +543,17 @@ async fn handle_read_param(name: String, state: SharedState) -> Result<impl warp
             ));
         }
     };
+
+    if app.interface.is_internal(parameter_id)
+    {
+        let error_response = json(&json!({
+            "error": format!("Access internal parameter |{}| forbidden", name)
+        }));
+        return Ok(warp::reply::with_status(
+            error_response,
+            StatusCode::FORBIDDEN,
+        ));
+    }
 
     match app.interface.get(parameter_id, false) {
         Ok(value) => Ok(warp::reply::with_status(
@@ -569,6 +614,28 @@ async fn handle_write_param(
             ));
         }
     };
+
+    if app.interface.is_internal(parameter_id)
+    {
+        let error_response = json(&json!({
+            "error": format!("Access internal parameter |{}| forbidden", name)
+        }));
+        return Ok(warp::reply::with_status(
+            error_response,
+            StatusCode::FORBIDDEN,
+        ));
+    }
+
+    if app.interface.is_readonly(parameter_id)
+    {
+        let error_response = json(&json!({
+            "error": format!("Readonly parameter cannnot be changed |{}|", name)
+        }));
+        return Ok(warp::reply::with_status(
+            error_response,
+            StatusCode::FORBIDDEN,
+        ));
+    }
 
     let converted = match app.interface.set_from_string(parameter_id, &value_str) {
         Ok(v) => v,

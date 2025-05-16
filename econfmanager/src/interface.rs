@@ -114,6 +114,9 @@ impl InterfaceInstance {
         parameter: ParameterValue,
     ) -> Result<ParameterValue, Box<dyn std::error::Error>> {
         let index: usize = id as usize;
+        if PARAMETER_DATA[index].is_const {
+            return Err(format!("Parameter {index} is const. Setting denied").into());
+        }
         let result = self.database.lock().unwrap().write(id, parameter, false);
         let value = match result {
             Ok(status) => match status {
@@ -175,14 +178,26 @@ impl InterfaceInstance {
         PARAMETER_DATA[id as usize].comment.to_owned()
     }
 
-    pub fn get_is_const(&self, id: ParameterId) -> bool {
+    pub fn is_const(&self, id: ParameterId) -> bool {
         PARAMETER_DATA[id as usize].is_const
     }
 
-    pub fn get_runtime(&self, id: ParameterId) -> bool {
+    pub fn is_runtime(&self, id: ParameterId) -> bool {
         PARAMETER_DATA[id as usize].runtime
     }
 
+    pub fn is_readonly(&self, id: ParameterId) -> bool {
+        PARAMETER_DATA[id as usize].readonly
+    }
+
+    pub fn is_internal(&self, id: ParameterId) -> bool {
+        PARAMETER_DATA[id as usize].internal
+    }
+
+    pub fn get_tags(&self, id: ParameterId) -> Vec<String> {
+        PARAMETER_DATA[id as usize].tags.iter().map(|val|val.to_string()).collect()
+    }
+    
     pub fn get_validation_json(&self, id: ParameterId) -> serde_json::Value {
         match &PARAMETER_DATA[id as usize].validation {
             crate::schema::ValidationMethod::None => serde_json::json!("none"),
@@ -200,10 +215,18 @@ impl InterfaceInstance {
                 let value_pairs: Vec<_> = values_iter
                     .zip(names_iter)
                     .map(|(value, name)| {
-                        serde_json::json!({
-                            "value": Self::value_to_string(value),
-                            "name": name
-                        })
+                        match value {
+                            ParameterValue::ValEnum(_) =>
+                                serde_json::json!({
+                                    "value": Self::value_to_string(value),
+                                    "name": name
+                                }),
+                            _ =>
+                            serde_json::json!({
+                                "value": Self::value_to_string(value),
+                                "name": Self::value_to_string(value),
+                            }),
+                        }
                     })
                     .collect();
                 serde_json::json!({ "allowed_values": value_pairs })

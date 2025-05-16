@@ -3,6 +3,7 @@ package parameters;
 
 import "options.proto";
 import "custom_types.proto";
+import "device.proto";
 
 option (options.version) = 1;
 
@@ -12,14 +13,18 @@ message ImageAcquisition {
                            (options.min) = { val_int32: 256 },
                            (options.max) = { val_int32: 2048 },
                            (options.default_value) = { val_int32: 256 },
-                           (options.comment) = "The width of the processed image"];
+                           (options.comment) = "The width of the processed image",
+                           (options.tags) = "UI",
+                           (options.tags) = "Camera"];
     
     int32 image_height = 2 [(options.title) = "Image Height",
                             (options.validation) = RANGE,
                             (options.min) = { val_int32: 256 },
                             (options.max) = { val_int32: 2048 },
                             (options.default_value) = { val_int32: 256 },
-                            (options.comment) = "The height of the processed image"];
+                            (options.comment) = "The height of the processed image",
+                            (options.tags) = "UI",
+                            (options.tags) = "Camera"];
 
     float exposure = 3 [(options.title) = "Exposure",
                         (options.validation) = RANGE,
@@ -35,6 +40,7 @@ message ImageAcquisition {
 
     bool generation_enabled = 5 [(options.title) = "Generation Enabled",
                                  (options.default_value) = { val_bool: true },
+                                 (options.internal) = true,
                                  (options.comment) = "Enable generation"];
 
     uint32 resolution = 6 [(options.title) = "Resolution",
@@ -50,23 +56,10 @@ message ImageAcquisition {
 
     custom_types.StatusLevel status = 8 [
         (options.runtime) = true,
+        (options.readonly) = true,
         (options.default_value) = { val_custom: { status_level: STATUS_DISABLED }},
-        (options.comment) = "Image Generator status"
-    ];
-}
-
-message Device {
-    string device_name = 1 [(options.title) = "Device Name",
-                            (options.default_value) = { val_str: "device" }];
-
-    string serial_number = 2 [(options.title) = "Serial Number",
-                              (options.default_value) = { val_str: "012345" },
-                              (options.comment) = "Serial Number of the device"];
-
-    custom_types.StatusLevel status = 3 [
-        (options.runtime) = true,
-        (options.default_value) = { val_custom: { status_level: STATUS_DISABLED }},
-        (options.comment) = "Image Generator status"
+        (options.comment) = "Image Generator status",
+        (options.tags) = "UI"
     ];
 }
 
@@ -74,6 +67,6 @@ message Configuration {
     ImageAcquisition image_acquisition = 1 [(options.title) = "Image Acquisition",
                                             (options.comment) = "Image Acquisition And Camera Parameters"];
 
-    Device device = 2 [(options.title) = "Device",
-                       (options.comment) = "Device and System Parameters"];
+    device.Device device = 2 [(options.title) = "Device",
+                              (options.comment) = "Device and System Parameters"];
 }
