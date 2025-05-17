@@ -45,4 +45,5 @@ extend google.protobuf.FieldOptions {
     string title = 50011;                             /* Title of the parameter */
     bool readonly = 50012;                            /* Readonly parameters cannot be changed in the UI (JSONRPC Server) */
     bool internal = 50013;                            /* Internal parameters are not shown in the UI (JSONRPC Server) */
+    bool writeonly = 50014;                           /* Write only parameters are not transmitted to the UI */
 }
