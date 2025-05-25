@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-    "jsonrpc_server",
+    "jsonrpc_server/app",
+    "jsonrpc_server/lib",
     "econfmanager"
 ]

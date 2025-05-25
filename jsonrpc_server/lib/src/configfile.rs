@@ -6,7 +6,7 @@ use serde::Deserialize;
  ******************************************************************************/
 
 #[derive(Deserialize, Default)]
-pub(crate) struct Config {
+pub struct Config {
     #[serde(default = "default_database_path")]
     pub database_path: String,
     #[serde(default = "default_saved_database_path")]
@@ -18,6 +18,13 @@ pub(crate) struct Config {
     #[serde(default = "default_json_rpc_port")]
     pub json_rpc_port: String,
 }
+
+#[derive(Deserialize)]
+struct TomlConfig {
+    #[serde(default)]
+    econfmanager: Config,
+}
+
 
 /******************************************************************************
  * PRIVATE FUNCTIONS
@@ -48,9 +55,13 @@ fn default_json_rpc_port() -> String {
  ******************************************************************************/
 
 impl Config {
-    pub(crate) fn from_file(config_file:String) -> Config {
-        let file_content = fs::read_to_string(std::path::Path::new(&config_file)).expect(&format!("Failed to read configuration file {}", config_file));
-        let config: Config = serde_json::from_str(&file_content).expect("Failed to parse JSON");
-        config
+    pub fn from_file(config_file: String) -> Config {
+        let file_content = fs::read_to_string(std::path::Path::new(&config_file))
+            .expect(&format!("Failed to read configuration file {}", config_file));
+        
+        let toml_config: TomlConfig = toml::from_str(&file_content)
+            .expect("Failed to parse TOML configuration");
+        
+        toml_config.econfmanager
     }
 }

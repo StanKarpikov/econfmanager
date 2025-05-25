@@ -1,0 +1,19 @@
+[package]
+name = "jsonrpc_server"
+version = "0.1.0"
+edition = "2024"
+authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
+license = "MIT"
+
+[dependencies]
+jsonrpc_lib = { path = "../lib" }
+warp = "0.3"
+clap = { version = "4.4", features = ["derive", "cargo"] }
+tokio = { version = "1.0", features = ["full"] }
+econfmanager = {path = "../../econfmanager"}
+env_logger = "0.11.8"
+log = "0.4.27"
+
+[[bin]]
+name = "jsonrpc_server"
+path = "main.rs"

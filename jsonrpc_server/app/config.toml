@@ -1,0 +1,6 @@
+[econfmanager]
+database_path = "examples/peripheral_service/parameters.db"
+saved_database_path = "examples/peripheral_service/saved_parameters.db"
+default_data_folder = "examples/peripheral_service/default_data/"
+json_rpc_listen_address = "0.0.0.0"
+json_rpc_port = "3031"
