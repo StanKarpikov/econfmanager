@@ -93,6 +93,7 @@ macro_rules! build_server {
             use warp::Filter;
             use warp::Reply;
             use warp::Rejection;
+            use warp::path::FullPath;
 
             let (ws, read_param, write_param, info, socket_addr) =
                 build_default_routes(config_file);
@@ -105,16 +106,34 @@ macro_rules! build_server {
                 let api_routes = api_routes.or($user_routes);
             )*
 
+            let log = warp::log::custom(|info| {
+                println!(
+                    "{} {} {} {}",
+                    info.method(),
+                    info.path(),
+                    info.status(),
+                    info.elapsed().as_millis()
+                );
+            });
+
             if $serve_static {
                 let static_files_path = std::env::var("STATIC_FILES_PATH").expect(
                     "STATIC_FILES_PATH environment variable not set"
                 );
-                let static_files = warp::fs::dir(static_files_path);
-                warp::serve(api_routes.or(static_files))
+                let static_files = warp::fs::dir(static_files_path.clone());
+                let fallback = warp::get()
+                    .and(warp::path::full())
+                    .map(move |_| {
+                        match std::fs::read_to_string(format!("{}/index.html", static_files_path)) {
+                            Ok(contents) => warp::reply::html(contents),
+                            Err(_) => warp::reply::html("Index file not found".to_owned())
+                        }
+                    });
+                warp::serve(api_routes.or(static_files).or(fallback).with(log))
                     .run(socket_addr)
                     .await;
             } else {
-                warp::serve(api_routes)
+                warp::serve(api_routes.with(log))
                     .run(socket_addr)
                     .await;
             }
