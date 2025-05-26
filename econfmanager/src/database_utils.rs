@@ -31,6 +31,8 @@ impl ParameterValue {
             (ParameterValue::ValI32(a), ParameterValue::ValI32(b)) => Some((*a - *b).abs() as f64),
             (ParameterValue::ValF32(a), ParameterValue::ValF32(b)) => Some((a - b).abs().into()),
             (ParameterValue::ValEnum(a), ParameterValue::ValEnum(b)) => Some((*a - *b).abs() as f64),
+            (ParameterValue::ValEnum(a), ParameterValue::ValI32(b)) => Some((*a - *b).abs() as f64),
+            (ParameterValue::ValI32(a), ParameterValue::ValEnum(b)) => Some((*a - *b).abs() as f64),
             (ParameterValue::ValString(a), ParameterValue::ValString(b)) => {
                 let dist = levenshtein(a, b);
                 Some(dist as f64)
@@ -42,7 +44,7 @@ impl ParameterValue {
                     None
                 }
             },
-            _ => None, // Distance not defined for mismatched or unsupported variants
+            _ => todo!("Unknown distance between {self} and {other}"), // Distance not defined for mismatched or unsupported variants
         }
     }
 }
@@ -544,15 +546,17 @@ impl DatabaseManager {
         id: ParameterId,
         value: Status<ParameterValue>,
     ) -> Result<Status<ParameterValue>, Box<dyn Error>> {
-        let input = value.unwrap(); // consume `value` once, no clone
-    
+        let input = value.unwrap();
+        debug!("Validating {}", id as usize);
         match &PARAMETER_DATA[id as usize].validation {
             ValidationMethod::None => Ok(Status::StatusOkNotChanged(input)),
     
             ValidationMethod::Range { min, max } => {
                 if input < *min {
+                    debug!("{} min overflow fixed {input} -> {}", id as usize, *min);
                     Ok(Status::StatusOkOverflowFixed(min.clone()))
                 } else if input > *max {
+                    debug!("{} max overflow fixed {input} -> {}", id as usize, *max);
                     Ok(Status::StatusOkOverflowFixed(max.clone()))
                 } else {
                     Ok(Status::StatusOkNotChanged(input))
@@ -571,6 +575,7 @@ impl DatabaseManager {
                         }
                         else
                         {
+                            debug!("{} allowed val overflow fixed {input} -> {}", id as usize, *closest);
                             Ok(Status::StatusOkOverflowFixed(closest.clone()))
                         }
                     }
