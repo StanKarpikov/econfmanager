@@ -21,7 +21,6 @@ pub struct Config {
 
 #[derive(Deserialize)]
 struct TomlConfig {
-    #[serde(default)]
     econfmanager: Config,
 }
 
