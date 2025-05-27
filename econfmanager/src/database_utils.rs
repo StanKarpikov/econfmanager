@@ -549,7 +549,7 @@ impl DatabaseManager {
         let input = value.unwrap();
         debug!("Validating {}", id as usize);
         match &PARAMETER_DATA[id as usize].validation {
-            ValidationMethod::None => Ok(Status::StatusOkNotChanged(input)),
+            ValidationMethod::None => Ok(Status::StatusOkChanged(input)),
     
             ValidationMethod::Range { min, max } => {
                 if input < *min {
@@ -559,7 +559,7 @@ impl DatabaseManager {
                     debug!("{} max overflow fixed {input} -> {}", id as usize, *max);
                     Ok(Status::StatusOkOverflowFixed(max.clone()))
                 } else {
-                    Ok(Status::StatusOkNotChanged(input))
+                    Ok(Status::StatusOkChanged(input))
                 }
             }
     
@@ -571,7 +571,7 @@ impl DatabaseManager {
                 {
                     Some((closest, _)) => {
                         if *closest == input {
-                            Ok(Status::StatusOkNotChanged(input))
+                            Ok(Status::StatusOkChanged(input))
                         }
                         else
                         {
@@ -607,7 +607,7 @@ impl DatabaseManager {
         }
     
         // Validate the incoming value
-        let validated_status = match self.validate(id, Status::StatusOkNotChanged(value)) {
+        let validated_status = match self.validate(id, Status::StatusOkChanged(value)) {
             Ok(v) => v,
             Err(e) => {
                 error!("Error validating parameter {}: {}", id as usize, e);
@@ -692,7 +692,7 @@ impl DatabaseManager {
                     return Err(format!("Invalid parameter value: {}", id).into());
                 }
             };
-            debug!("Parameter {} {} updated", key, pm_id as usize);
+            info!("Parameter {} {} updated by timestamp", key, pm_id as usize);
             pending_callbacks.push(pm_id);
         }
 

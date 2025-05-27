@@ -70,7 +70,7 @@ impl EventReceiver {
                 Ok((num_bytes, src)) => {
                     match ParameterNotification::decode(&buf[..num_bytes]) {
                         Ok(notification) => {
-                            debug!("Received parameter notification from {}: id={}", src, notification.id);
+                            info!("Received parameter notification from {}: id={}", src, notification.id);
                             match ParameterId::try_from(notification.id as usize) {
                                 Ok(id) => self.notify_callback(id),
                                 Err(e) => {
