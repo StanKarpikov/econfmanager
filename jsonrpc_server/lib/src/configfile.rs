@@ -20,7 +20,7 @@ pub struct Config {
 }
 
 #[derive(Deserialize)]
-struct TomlConfig {
+struct Config {
     econfmanager: Config,
 }
 
@@ -57,10 +57,10 @@ impl Config {
     pub fn from_file(config_file: String) -> Config {
         let file_content = fs::read_to_string(std::path::Path::new(&config_file))
             .expect(&format!("Failed to read configuration file {}", config_file));
-        
-        let toml_config: TomlConfig = toml::from_str(&file_content)
-            .expect("Failed to parse TOML configuration");
-        
-        toml_config.econfmanager
+
+        let config: Config = serde_yaml::from_str(&file_content)
+            .expect("Failed to parse configuration");
+
+        config.econfmanager
     }
 }
