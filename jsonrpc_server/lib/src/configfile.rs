@@ -20,7 +20,7 @@ pub struct Config {
 }
 
 #[derive(Deserialize)]
-struct Config {
+struct YamlConfig {
     econfmanager: Config,
 }
 
@@ -58,7 +58,7 @@ impl Config {
         let file_content = fs::read_to_string(std::path::Path::new(&config_file))
             .expect(&format!("Failed to read configuration file {}", config_file));
 
-        let config: Config = serde_yaml::from_str(&file_content)
+        let config: YamlConfig = serde_yaml::from_str(&file_content)
             .expect("Failed to parse configuration");
 
         config.econfmanager
