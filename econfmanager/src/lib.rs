@@ -56,7 +56,7 @@ impl CInterfaceInstance {
             return Err("Null pointer in CInterfaceInstance".into());
         }
         let arc = unsafe {&*self.0};
-        Ok(f(&arc))
+        Ok(f(arc))
     }
     
     #[allow(unused)]
@@ -94,7 +94,15 @@ impl Drop for CInterfaceInstance {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_init(
+/// Initialize the econf manager
+///
+/// # Safety
+/// This function is unsafe because it operates on raw pointers. The caller must ensure:
+/// - `database_path` must be a valid pointer to a null-terminated C string
+/// - `saved_database_path` must be a valid pointer to a null-terminated C string  
+/// - `default_data_folder` must be a valid pointer to a null-terminated C string
+/// - `interface` must be a valid pointer to a pointer to CInterfaceInstance
+pub unsafe extern "C" fn econf_init(
         database_path: *const std::os::raw::c_char,
         saved_database_path: *const std::os::raw::c_char,
         default_data_folder: *const std::os::raw::c_char,
@@ -138,7 +146,14 @@ pub extern "C" fn econf_init(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn econf_get_name(interface: *const CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
+/// Get the name of a parameter
+///
+/// # Safety
+/// This function is unsafe because it operates on raw pointers. The caller must ensure:
+/// - `interface` must be a valid pointer to a CInterfaceInstance
+/// - `name` must be a valid pointer to a buffer of at least `max_length` bytes
+/// - The buffer pointed to by `name` must be writable
+pub unsafe extern "C" fn econf_get_name(interface: *const CInterfaceInstance, id: ParameterId, name: *mut c_char, max_length: usize) -> EconfStatus {
     interface_execute(interface, |interface| {
         let rust_string = interface.get_name(id);
 
@@ -164,17 +179,28 @@ pub type ParameterUpdateCallbackFFI = extern "C" fn(id: ParameterId, arg: *mut s
 
 #[unsafe(no_mangle)]
 pub extern "C" fn econf_add_callback(interface: *const CInterfaceInstance, id: ParameterId, callback: ParameterUpdateCallbackFFI, user_data: *mut std::ffi::c_void) -> EconfStatus {
+    // Create a wrapper struct that is Send + Sync to safely handle the raw pointer
+    struct CallbackWrapper {
+        callback: ParameterUpdateCallbackFFI,
+        user_data: *mut std::ffi::c_void,
+    }
+    
+    // SAFETY: We implement Send and Sync manually, assuming the callback and user_data
+    // are safe to use across threads.
+    unsafe impl Send for CallbackWrapper {}
+    unsafe impl Sync for CallbackWrapper {}
+    
+    let wrapper = Arc::new(CallbackWrapper {
+        callback,
+        user_data,
+    });
+    
     let closure = move |id: ParameterId| {
-        callback(id, user_data);
+        (wrapper.callback)(id, wrapper.user_data);
     };
-    // SAFETY: We're asserting that the closure is Send+Sync even though it uses a raw pointer.
-    // This is okay only if `callback` and `user_data` are safe to call and use across threads!
-    let cb_boxed = unsafe {
-        std::mem::transmute::<
-            Arc<dyn Fn(ParameterId)>,
-            Arc<dyn Fn(ParameterId) + Send + Sync>
-        >(Arc::new(closure))
-    };
+    
+    // Now the closure only captures the Arc which is Send + Sync
+    let cb_boxed = Arc::new(closure);
     interface_execute(interface, |interface| {
         interface.add_callback(id, cb_boxed)
     })
