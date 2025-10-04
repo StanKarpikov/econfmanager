@@ -98,7 +98,7 @@ impl DbConnection {
             OpenFlags::SQLITE_OPEN_READ_ONLY
         };
 
-        let mut conn = match Connection::open_with_flags(&database_path, flags) {
+        let mut conn = match Connection::open_with_flags(database_path, flags) {
             Ok(conn) => {
                 let _ = conn.busy_timeout(std::time::Duration::from_millis(300));
                 conn
