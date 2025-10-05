@@ -7,7 +7,7 @@ license = "MIT"
 
 [dependencies]
 jsonrpc_lib = { path = "../lib" }
-warp = "0.3"
+warp = "0.4.2"
 clap = { version = "4.4", features = ["derive", "cargo"] }
 tokio = { version = "1.0", features = ["full"] }
 econfmanager = {path = "../../econfmanager"}
