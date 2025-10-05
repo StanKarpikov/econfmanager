@@ -16,6 +16,17 @@ Features:
 ![alt text](docs/diagram.drawio.png)
 Architecture
 
+## Dependencies
+
+The following tools and libraries are required to build and generate code for EConfManager:
+
+- **libsqlite3-dev**: Development files for SQLite3, required for database support.
+- **cbindgen**: Generates C bindings from Rust code for interoperability.
+- **rustfmt**: Formats Rust code according to style guidelines.
+- **protoc**: Protocol Buffers compiler, used to generate code from .proto files.
+
+Install these tools and libraries before building the project.
+
 ## Porting Guide
 
 Refer to `examples/peripheral_device` for a C application example.
