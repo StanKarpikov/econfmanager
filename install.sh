@@ -9,24 +9,24 @@ DYN_LIB="$TARGET_DIR/libeconfmanager.so"
 # Parse named parameters
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --libs-folder=*)
+        --libs-release-folder=*)
             LIB_DIR="${1#*=}"
             shift
             ;;
-        --header-folder=*)
+        --header-release-folder=*)
             HEADERS_DIR="${1#*=}"
             shift
             ;;
         *)
             echo "Unknown parameter: $1"
-            echo "Usage: $0 --libs-folder=PATH --header-folder=PATH"
+            echo "Usage: $0 --libs-release-folder=PATH --header-release-folder=PATH"
             exit 1
             ;;
     esac
 done
 
 if [ -z "$LIB_DIR" ] || [ -z "$HEADERS_DIR" ]; then
-    echo "Usage: $0 --libs-folder=PATH --header-folder=PATH"
+    echo "Usage: $0 --libs-release-folder=PATH --header-release-folder=PATH"
     exit 1
 fi
 
