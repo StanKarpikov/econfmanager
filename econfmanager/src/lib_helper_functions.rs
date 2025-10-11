@@ -326,6 +326,7 @@ pub unsafe fn c_buffer_to_blob(buffer: *const u8, len: usize, id: ParameterId) -
     Ok(unsafe { slice::from_raw_parts(buffer, len).to_vec() })
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_blob(
     interface: *const CInterfaceInstance,
     id: ParameterId,
@@ -349,6 +350,7 @@ pub(crate) fn get_blob(
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn set_blob(
     interface: *const CInterfaceInstance,
     id: ParameterId,
