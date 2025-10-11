@@ -365,7 +365,7 @@ impl InterfaceInstance {
                     }
             ParameterValueType::TypeEnum(_) => value
                         .as_i64()
-                        .map(|v| ParameterValue::ValI32(v as i32))
+                        .map(|v| ParameterValue::ValEnum(v as i32))
                         .ok_or_else(|| anyhow!("Expected an integer"))?,
             ParameterValueType::TypeNone => ParameterValue::ValNone,
         };
