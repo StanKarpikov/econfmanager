@@ -231,7 +231,9 @@ pub(crate) fn generate_parameter_functions(
         writeln!(f, "/// Auto‐generated. See build.rs\n")?;
         
         writeln!(f, "use std::ffi::c_char;")?;
-        writeln!(f, "use crate::{{lib_helper_functions::{{get_parameter, get_parameter_quick, set_parameter, get_string, set_string, get_blob, set_blob}}, generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
+        writeln!(f, "#[allow(unused_imports)]")?;
+        writeln!(f, "use crate::{{")?;
+        writeln!(f, "lib_helper_functions::{{get_parameter, get_parameter_quick, set_parameter, get_string, set_string, get_blob, set_blob}}, generated::ParameterId, CInterfaceInstance, EconfStatus}};\n")?;
         writeln!(f, "use num_derive::FromPrimitive;")?;
         writeln!(f, "use num_traits::FromPrimitive;")?;
 
