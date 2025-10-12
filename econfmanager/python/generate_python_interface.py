@@ -264,7 +264,7 @@ class EconfManager:
         "double": "c_double",
     }
 
-    def resolve_ctype(c_type: str) -> str:
+    def resolve_ctype(c_type: str, is_return: bool = False) -> str:
         t = c_type.strip()
         t = t.replace("const ", "")
         # Handle pointer types
@@ -285,6 +285,9 @@ class EconfManager:
         # Special case for enums (use c_int)
         if t in enums:
             return "c_int"
+        # Only use None for void return type, not for arguments
+        if t == "void":
+            return "None" if is_return else "c_void_p"
         return ctype_map.get(t, f"c_void_p")
 
     def ctype_to_pytype(c_type: str) -> str:
@@ -313,10 +316,10 @@ class EconfManager:
         python_code += f"        # {func['name']}\n"
         argtypes = []
         for param in func['params']:
-            argtypes.append(resolve_ctype(param['type']))
+            argtypes.append(resolve_ctype(param['type'], is_return=False))
         python_code += f"        self.lib.{func['name']}.argtypes = [{', '.join(argtypes)}]\n"
         return_type = func['return_type']
-        python_code += f"        self.lib.{func['name']}.restype = {resolve_ctype(return_type)}\n"
+        python_code += f"        self.lib.{func['name']}.restype = {resolve_ctype(return_type, is_return=True)}\n"
 
     # Generate wrapper methods for each function
     for func in functions:
