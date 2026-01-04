@@ -2,7 +2,7 @@
 name = "econfmanager"
 description = "Configuration Manager for Embedded Systems"
 version = "0.1.7"
-edition = "2024"
+edition = "2021"
 authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
 license = "MIT"
 

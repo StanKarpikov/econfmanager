@@ -260,9 +260,9 @@ pub(crate) fn generate_parameter_functions(
         }
     }
 
-    Command::new("rustfmt")
-        .arg(dest_path)
-        .status()?;
+    // Command::new("rustfmt")
+    //     .arg(dest_path)
+    //     .status()?;
 
     Ok(())
 }
