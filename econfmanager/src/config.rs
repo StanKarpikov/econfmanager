@@ -1,3 +1,5 @@
+use log::info;
+
 pub(crate) struct Config {
     pub database_path: String,
     pub saved_database_path: String,
@@ -13,10 +15,18 @@ impl Config {
             Ok(expanded)
         };
 
+        let database_path = expand_path(database_path)?;
+        let saved_database_path = expand_path(saved_database_path)?;
+        let default_data_folder = expand_path(default_data_folder)?;
+
+        info!("Database path: {}", database_path);
+        info!("Saved database path: {}", saved_database_path);
+        info!("Default data folder: {}", default_data_folder);
+
         Ok(Config {
-            database_path: expand_path(database_path)?,
-            saved_database_path: expand_path(saved_database_path)?,
-            default_data_folder: expand_path(default_data_folder)?,
+            database_path,
+            saved_database_path,
+            default_data_folder,
         })
     }
 }
