@@ -33,7 +33,7 @@ where
     let interface = unsafe { &*interface };
     match interface.with_lock(|lock| {
         lock.try_lock_for(LOCK_TRYING_DURATION)
-            .map(|mut guard| f(&mut *guard))
+            .map(|mut guard| f(&mut guard))
             .unwrap_or_else(|| {
                 error!("Failed to acquire lock within timeout");
                 Err("Lock timeout".into())
@@ -201,7 +201,7 @@ pub(crate) fn set_parameter<T: ParameterType>(
     })
 }
 
-pub fn copy_string_to_c_buffer(
+pub unsafe fn copy_string_to_c_buffer(
     s: &str,
     out_c_string: *mut c_char,
     max_len: usize,
@@ -232,7 +232,7 @@ pub fn copy_string_to_c_buffer(
 
 fn c_char_to_string(c_string: *const c_char, id: ParameterId) -> Result<String, String> {
     if c_string.is_null() {
-        return Err(format!("Null pointer provided for {}", id as usize).into());
+        return Err(format!("Null pointer provided for {}", id as usize));
     }
 
     unsafe {
@@ -254,14 +254,14 @@ pub(crate) fn get_string(
     interface_execute(interface, |interface| match interface.get(id, false) {
         Ok(parameter) => match parameter {
             ParameterValue::ValString(val_str) => {
-                let bytes_copied = copy_string_to_c_buffer(&val_str, out_c_string, max_len, id)?;
+                let bytes_copied = unsafe { copy_string_to_c_buffer(&val_str, out_c_string, max_len, id)? };
                 if !out_len.is_null(){
                     unsafe { *out_len = bytes_copied };
                 }
                 Ok(())
             }
             _ => {
-                return Err(format!("Wrong type requested for ID {}: string", id as usize).into());
+                Err(format!("Wrong type requested for ID {}: string", id as usize).into())
             }
         },
         Err(e) => Err(format!("Error getting ID {}: string - {}", id as usize, e).into()),
@@ -290,7 +290,7 @@ pub(crate) fn set_string(
     })
 }
 
-pub fn copy_blob_to_c_buffer(
+pub unsafe fn copy_blob_to_c_buffer(
     blob: &[u8],
     out_buffer: *mut u8,
     max_len: usize
@@ -309,7 +309,16 @@ pub fn copy_blob_to_c_buffer(
     Ok(blob.len())
 }
 
-pub fn c_buffer_to_blob(buffer: *const u8, len: usize, id: ParameterId) -> Result<Vec<u8>, String> {
+/// Converts a C-style buffer to a Rust Vec<u8>
+///
+/// # Safety
+/// 
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure:
+/// - `buffer` points to valid memory and is properly aligned for `u8`
+/// - `buffer` points to at least `len` bytes of initialized memory
+/// - The memory region `[buffer, buffer + len)` must be valid for the duration of the function call
+/// - The memory must not be modified by other threads during this operation
+pub unsafe fn c_buffer_to_blob(buffer: *const u8, len: usize, id: ParameterId) -> Result<Vec<u8>, String> {
     if buffer.is_null() {
         return Err(format!("Null pointer provided for blob ID {}", id as usize));
     }
@@ -317,6 +326,7 @@ pub fn c_buffer_to_blob(buffer: *const u8, len: usize, id: ParameterId) -> Resul
     Ok(unsafe { slice::from_raw_parts(buffer, len).to_vec() })
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_blob(
     interface: *const CInterfaceInstance,
     id: ParameterId,
@@ -328,7 +338,7 @@ pub(crate) fn get_blob(
     interface_execute(interface, |interface| match interface.get(id, false) {
         Ok(parameter) => match parameter {
             ParameterValue::ValBlob(blob) => {
-                let bytes_copied = copy_blob_to_c_buffer(&blob, out_buffer, max_len)?;
+                let bytes_copied = unsafe { copy_blob_to_c_buffer(&blob, out_buffer, max_len)? };
                 if !out_len.is_null(){
                     unsafe { *out_len = bytes_copied };
                 }
@@ -340,6 +350,7 @@ pub(crate) fn get_blob(
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn set_blob(
     interface: *const CInterfaceInstance,
     id: ParameterId,
@@ -348,7 +359,7 @@ pub(crate) fn set_blob(
 ) -> EconfStatus {
     debug!("Set ID {}: blob ({} bytes)", id as usize, len);
     interface_execute(interface, |interface| {
-        let blob = c_buffer_to_blob(buffer, len, id)?;
+        let blob = unsafe { c_buffer_to_blob(buffer, len, id)? };
         let parameter = ParameterValue::ValBlob(blob);
         match interface.set(id, parameter) {
             Ok(_) => Ok(()),

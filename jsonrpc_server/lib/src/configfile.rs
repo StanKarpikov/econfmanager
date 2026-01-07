@@ -20,7 +20,7 @@ pub struct Config {
 }
 
 #[derive(Deserialize)]
-struct TomlConfig {
+struct YamlConfig {
     econfmanager: Config,
 }
 
@@ -56,11 +56,11 @@ fn default_json_rpc_port() -> String {
 impl Config {
     pub fn from_file(config_file: String) -> Config {
         let file_content = fs::read_to_string(std::path::Path::new(&config_file))
-            .expect(&format!("Failed to read configuration file {}", config_file));
-        
-        let toml_config: TomlConfig = toml::from_str(&file_content)
-            .expect("Failed to parse TOML configuration");
-        
-        toml_config.econfmanager
+            .unwrap_or_else(|_| panic!("Failed to read configuration file {}", config_file));
+
+        let config: YamlConfig = serde_yaml::from_str(&file_content)
+            .expect("Failed to parse configuration");
+
+        config.econfmanager
     }
 }

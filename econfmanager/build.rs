@@ -106,7 +106,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let header_path: PathBuf = build_dir.join("econfmanager.h");
     let header_path_copy = header_path.clone();
-    let status = Command::new("cbindgen")
+    // Try to find cbindgen in the system PATH
+    let cbindgen_path = if let Ok(path) = env::var("CBINDGEN_PATH") {
+        PathBuf::from(path)
+    } else if let Ok(path) = which::which("cbindgen") {
+        path
+    } else {
+        panic!("cbindgen not found in PATH and CBINDGEN_PATH not set");
+    };
+
+    let status = Command::new(cbindgen_path)
         .arg("--crate")
         .arg("econfmanager")
         .arg("--output")

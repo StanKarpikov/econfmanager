@@ -1,5 +1,5 @@
 [workspace]
-resolver = "3"
+resolver = "2"
 members = [
     "jsonrpc_server/app",
     "jsonrpc_server/lib",

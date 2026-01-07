@@ -2,7 +2,7 @@
 name = "econfmanager"
 description = "Configuration Manager for Embedded Systems"
 version = "0.1.7"
-edition = "2024"
+edition = "2021"
 authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
 license = "MIT"
 
@@ -24,6 +24,8 @@ anyhow = "1.0.98"
 num-derive = "0.4.2"
 num-traits = "0.2"
 strsim = "0.11.1"
+ansi_term = "0.12.1"
+shellexpand = "3.1.0"
 
 [build-dependencies]
 prost = "0.13.5"
@@ -34,6 +36,7 @@ serde_json = "1.0"
 base64 = "0.22.1"
 regex = "1.0"
 rustfmt = "0.10.0"
+which = "8.0.0"
 
 [lib]
 name = "econfmanager"

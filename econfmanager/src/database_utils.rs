@@ -98,7 +98,7 @@ impl DbConnection {
             OpenFlags::SQLITE_OPEN_READ_ONLY
         };
 
-        let mut conn = match Connection::open_with_flags(&database_path, flags) {
+        let mut conn = match Connection::open_with_flags(database_path, flags) {
             Ok(conn) => {
                 let _ = conn.busy_timeout(std::time::Duration::from_millis(300));
                 conn
@@ -302,11 +302,17 @@ impl DatabaseManager {
             error!("Could not drop the database: {}", error);
         }
         info!("Copying database");
-        Self::create_dirs_for_file(&self.database_path)?;
-        Self::copy_database(
+        if let Err(error) = Self::create_dirs_for_file(&self.database_path){
+            error!("Could not create the folders: {} for {}", error, self.database_path);
+            return Err(error.into());
+        }
+        if let Err(error) = Self::copy_database(
             Path::new(&self.saved_database_path),
-            Path::new(&self.database_path),
-        )
+            Path::new(&self.database_path)) {
+            error!("Could not copy the database: {}", error);
+        }
+        info!("Done");
+        Ok(())
     }
 
     pub(crate) fn save_database(

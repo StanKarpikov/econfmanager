@@ -5,7 +5,7 @@ pub mod utils;
 pub mod ws_server;
 
 use econfmanager::interface::InterfaceInstance;
-use warp::Filter;
+use warp::{Filter, ws};
 
 use crate::configfile::Config;
 use crate::rest_server::{handle_info, handle_read_param, handle_write_param};
@@ -52,9 +52,9 @@ pub fn build_default_routes(
 
     // WebSocket route
     let ws = warp::path("api_ws")
-        .and(warp::ws())
+        .and(ws())
         .and(state_filter.clone())
-        .map(|ws: warp::ws::Ws, state| ws.on_upgrade(move |socket| handle_ws(socket, state)));
+        .map(|ws: ws::Ws, state| ws.on_upgrade(move |socket| handle_ws(socket, state)));
 
     // REST API routes
     let read_param = warp::path!("api" / "read" / String)
