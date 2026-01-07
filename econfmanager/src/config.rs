@@ -6,6 +6,17 @@ pub(crate) struct Config {
 
 impl Config {
     pub(crate) fn new(database_path: &String, saved_database_path: &String, default_data_folder: &String) -> Result<Config, Box<dyn std::error::Error>> {
-        Ok(Config{database_path: database_path.to_string(), saved_database_path: saved_database_path.to_string(), default_data_folder: default_data_folder.to_string() })
+        let expand_path = |path: &String| -> Result<String, Box<dyn std::error::Error>> {
+            let expanded = shellexpand::env(path)
+                .map_err(|e| format!("Failed to expand environment variables: {}", e))?
+                .to_string();
+            Ok(expanded)
+        };
+
+        Ok(Config {
+            database_path: expand_path(database_path)?,
+            saved_database_path: expand_path(saved_database_path)?,
+            default_data_folder: expand_path(default_data_folder)?,
+        })
     }
 }
