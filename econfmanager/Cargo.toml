@@ -1,7 +1,7 @@
 [package]
 name = "econfmanager"
 description = "Configuration Manager for Embedded Systems"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 authors = [ "Stanislav Karpikov <stankarpikov@gmail.com>" ]
 license = "MIT"
